@@ -187,3 +187,9 @@ Append-only log: date, decision, why, alternatives rejected.
   error pair); only track rows play, other kinds report it. Live test:
   coordinated browser login worked first try; cached refresh needs no env
   afterwards; searched track played end to end with correct metadata.
+- 2026-09-11 (Phase 8): Spotify search `limit` caps at 10 (bisected live:
+  10 ok, 11/15/20/50 → 400 "Invalid limit"); bridge clamps 1..10. Up to
+  40 rows/call across types keeps the plan's 20–50 page.
+- 2026-09-11 (Phase 8): Refresh responses often omit a new refresh token —
+  the bridge preserved the cached one instead of overwriting with empty
+  (the overwrite wiped a login mid-phase; fixed + re-logged-in).

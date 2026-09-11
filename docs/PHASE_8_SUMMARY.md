@@ -55,6 +55,14 @@ isolated behind the C++ core (plans.md Phase 8).
   checks all `ok`, exit 0.
 - `build/gui.exe` relinked and smoke-tested alive; interactive search →
   play is user-testable in the GUI now.
+- Post-close bug reports from GUI testing, both fixed:
+  - HTTP 400 "Invalid limit": Spotify rejects search `limit` > 10
+    (bisected live: 10 ok, 11+ fail — docs saying 50 are outdated).
+    Bridge clamps to 1..10; up to 40 rows per call across 4 types, inside
+    the plan's 20–50 page.
+  - Wiped login: Spotify only sometimes rotates the refresh token, and the
+    bridge overwrote the good cached one with the empty string. Fixed:
+    never overwrite with empty. (Cost one extra user login; apologized.)
 - `cargo build --release` + `cmake --build build --config Release` exit 0.
 - `git status` clean; scope respected (`include/`, `rust/`,
   `cpp/core/**`, `cpp/ui/**`, `docs/`; TUI/CMakeLists untouched).

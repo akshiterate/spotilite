@@ -130,8 +130,9 @@ int spotify_search(SpotifyPlayer*, const char* query, int types, int limit,
 
 First call opens the browser once (`SPOTILITE_CLIENT_ID` env); refresh
 token cached machine-locally (`webapi.json`, never repo); 401 → refresh +
-single retry. Limit clamped 1..50, types 0 = all. Structured items — no
-JSON crosses into C++.
+single retry. Limit clamped 1..10 (Spotify rejects more — verified live).
+Types 0 = all. Structured items — no JSON crosses into C++. Empty refresh
+tokens never overwrite the cache.
 
 C++: `spotilite::SearchResult` + `SearchKind` (`SEARCH_ANY` = all; `ALL`
 is a Windows macro) + `Player::search()` into a vector. GUI: async Find,
