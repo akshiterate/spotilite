@@ -15,7 +15,7 @@ use std::os::raw::{c_char, c_float};
 use std::path::PathBuf;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 
 use librespot::{
@@ -27,7 +27,7 @@ use librespot::{
         audio_backend,
         config::{AudioFormat, PlayerConfig},
         mixer::{self, Mixer, MixerConfig},
-        player::Player,
+        player::{Player, PlayerEvent, PlayerEventChannel},
     },
 };
 
@@ -41,6 +41,7 @@ pub struct SpotifyPlayer {
     mixer: Arc<dyn Mixer>,
     cache: Cache,
     connected: AtomicBool,
+    event_rx: Mutex<PlayerEventChannel>,
 }
 
 // Last-error text, one buffer per calling thread. The pointer handed out is
@@ -149,15 +150,20 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
 
         // Session::new (and Player::new) require a Tokio runtime context:
         // they spawn background tasks via tokio primitives at construction.
-        let (session, player) = rt.block_on(async {
+        // Position updates feed the C++ core's playback-state polling.
+        let (session, player, event_rx) = rt.block_on(async {
             let session = Session::new(session_config, Some(session_cache));
+            let mut player_config = PlayerConfig::default();
+            player_config.position_update_interval =
+                Some(std::time::Duration::from_millis(1000));
             let player = Player::new(
-                PlayerConfig::default(),
+                player_config,
                 session.clone(),
                 mixer.get_soft_volume(),
                 move || sink_builder(None, audio_format),
             );
-            (session, player)
+            let event_rx = player.get_player_event_channel();
+            (session, player, event_rx)
         });
 
         let handle = SpotifyPlayer {
@@ -167,6 +173,7 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
             mixer,
             cache,
             connected: AtomicBool::new(false),
+            event_rx: Mutex::new(event_rx),
         };
         Ok(Box::into_raw(Box::new(handle)))
     };
@@ -335,6 +342,143 @@ pub unsafe extern "C" fn spotify_set_volume(
     let raw = (clamped * u16::MAX as c_float).round() as u16;
     handle.mixer.set_volume(raw);
     SPOTIFY_OK
+}
+
+// Event codes mirroring include/spotify_bridge.h.
+const SPOTIFY_EVENT_TRACK_STARTED: i32 = 1;
+const SPOTIFY_EVENT_PLAYING: i32 = 2;
+const SPOTIFY_EVENT_PAUSED: i32 = 3;
+const SPOTIFY_EVENT_TRACK_ENDED: i32 = 4;
+const SPOTIFY_EVENT_SEEKED: i32 = 5;
+const SPOTIFY_EVENT_VOLUME_CHANGED: i32 = 6;
+const SPOTIFY_EVENT_POSITION: i32 = 7;
+const SPOTIFY_EVENT_URI_MAX: usize = 128;
+
+/// C layout twin of `SpotifyEvent` (field order and types must match).
+#[repr(C)]
+pub struct SpotifyEvent {
+    pub event_type: i32,
+    pub position_ms: u32,
+    pub volume: u16,
+    pub reserved: u16,
+    pub uri: [c_char; SPOTIFY_EVENT_URI_MAX],
+}
+
+fn fill_uri(slot: &mut [c_char; SPOTIFY_EVENT_URI_MAX], uri: &SpotifyUri) {
+    let text = uri.to_string();
+    let bytes = text.as_bytes();
+    let n = bytes.len().min(SPOTIFY_EVENT_URI_MAX - 1);
+    for (i, b) in bytes[..n].iter().enumerate() {
+        slot[i] = *b as c_char;
+    }
+    slot[n] = 0;
+}
+
+/// Map one player event to a C event. `None` = not modelled; the poll loop
+/// drops it and keeps draining.
+fn map_event(event: PlayerEvent) -> Option<SpotifyEvent> {
+    let mut out = SpotifyEvent {
+        event_type: 0,
+        position_ms: 0,
+        volume: 0,
+        reserved: 0,
+        uri: [0; SPOTIFY_EVENT_URI_MAX],
+    };
+    match event {
+        PlayerEvent::Loading {
+            track_id,
+            position_ms,
+            ..
+        } => {
+            out.event_type = SPOTIFY_EVENT_TRACK_STARTED;
+            out.position_ms = position_ms;
+            fill_uri(&mut out.uri, &track_id);
+        }
+        PlayerEvent::Playing {
+            track_id,
+            position_ms,
+            ..
+        } => {
+            out.event_type = SPOTIFY_EVENT_PLAYING;
+            out.position_ms = position_ms;
+            fill_uri(&mut out.uri, &track_id);
+        }
+        PlayerEvent::Paused {
+            track_id,
+            position_ms,
+            ..
+        } => {
+            out.event_type = SPOTIFY_EVENT_PAUSED;
+            out.position_ms = position_ms;
+            fill_uri(&mut out.uri, &track_id);
+        }
+        PlayerEvent::EndOfTrack { track_id, .. }
+        | PlayerEvent::Unavailable { track_id, .. }
+        | PlayerEvent::Stopped { track_id, .. } => {
+            out.event_type = SPOTIFY_EVENT_TRACK_ENDED;
+            fill_uri(&mut out.uri, &track_id);
+        }
+        PlayerEvent::Seeked {
+            track_id,
+            position_ms,
+            ..
+        } => {
+            out.event_type = SPOTIFY_EVENT_SEEKED;
+            out.position_ms = position_ms;
+            fill_uri(&mut out.uri, &track_id);
+        }
+        PlayerEvent::VolumeChanged { volume } => {
+            out.event_type = SPOTIFY_EVENT_VOLUME_CHANGED;
+            out.volume = volume;
+        }
+        PlayerEvent::PositionChanged { position_ms, .. }
+        | PlayerEvent::PositionCorrection { position_ms, .. } => {
+            out.event_type = SPOTIFY_EVENT_POSITION;
+            out.position_ms = position_ms;
+        }
+        // Drained silently: preload hints, request ids, session/cluster
+        // updates, shuffle/repeat/autoplay/filter flags, queue dumps.
+        _ => return None,
+    }
+    Some(out)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_poll_event(
+    player: *mut SpotifyPlayer,
+    out: *mut SpotifyEvent,
+) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if out.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null event out-pointer".to_owned());
+    }
+    let mut rx = match handle.event_rx.lock() {
+        Ok(guard) => guard,
+        Err(_) => return fail(SPOTIFY_ERR_INTERNAL, "event lock poisoned".to_owned()),
+    };
+    loop {
+        match rx.try_recv() {
+            Ok(event) => {
+                if let Some(mapped) = map_event(event) {
+                    // SAFETY: null-checked above; caller provides storage.
+                    unsafe {
+                        *out = mapped;
+                    }
+                    return 1;
+                }
+            }
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => return 0,
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                return fail(
+                    SPOTIFY_ERR_INTERNAL,
+                    "player event channel closed".to_owned(),
+                )
+            }
+        }
+    }
 }
 
 #[no_mangle]

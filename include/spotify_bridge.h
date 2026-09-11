@@ -17,7 +17,10 @@
 // - No callbacks. Events arrive via polling in Phase 3.
 // - spotify_connect() blocks on network I/O; the rest return once the
 //   command is handed to the player thread (playback errors surface via
-//   Phase 3 events, not return codes).
+//   polled events, not return codes).
+// - Player events are drained with non-blocking spotify_poll_event()
+//   (preferred over callbacks, plans.md 1.7). Events the C layer does not
+//   model are silently dropped by the poll call.
 //
 // Credentials:
 // - spotify_connect() uses the cached credentials provisioned by the
@@ -75,6 +78,31 @@ int spotify_seek(SpotifyPlayer* player, uint32_t position_ms);
 
 // Set volume in [0.0, 1.0]; out-of-range values are clamped.
 int spotify_set_volume(SpotifyPlayer* player, float volume);
+
+// Player events. Drain with spotify_poll_event(); modelling is
+// intentionally coarse (commands own the queue, Phase 3/9).
+#define SPOTIFY_EVENT_NONE 0
+#define SPOTIFY_EVENT_TRACK_STARTED 1
+#define SPOTIFY_EVENT_PLAYING 2
+#define SPOTIFY_EVENT_PAUSED 3
+#define SPOTIFY_EVENT_TRACK_ENDED 4
+#define SPOTIFY_EVENT_SEEKED 5
+#define SPOTIFY_EVENT_VOLUME_CHANGED 6
+#define SPOTIFY_EVENT_POSITION 7
+
+#define SPOTIFY_EVENT_URI_MAX 128
+
+typedef struct SpotifyEvent {
+    int32_t type;
+    uint32_t position_ms;
+    uint16_t volume;    // valid for SPOTIFY_EVENT_VOLUME_CHANGED
+    uint16_t reserved;
+    char uri[SPOTIFY_EVENT_URI_MAX];  // set when the event carries a track
+} SpotifyEvent;
+
+// Copy out one pending player event without blocking. Returns 1 with *out
+// filled, 0 when no event is pending, or a negative error code.
+int spotify_poll_event(SpotifyPlayer* player, SpotifyEvent* out);
 
 // Human-readable description of the last failure on the calling thread.
 // Never NULL. Pass NULL to read a creation-time failure.
