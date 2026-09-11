@@ -227,6 +227,15 @@ Append-only log: date, decision, why, alternatives rejected.
   ViewportsEnable); docking branch is the ImGui-sanctioned path, same
   dep, same license, same direct-g++ build. Current GUI relinked
   unmodified + smoked green. Progress tracked in `docs/UI_REWORK.md`.
+- 2026-09-11 (UI rework phase 2): `Gui` split into `App` shell
+  (`cpp/ui/app.*`: Player ownership, viewport loop, shared
+  metadata/artwork) + per-window views (`main/queue/search_window.cpp`;
+  main view stays in the frame). Queue window shows current + numbered
+  upcoming; Play Selected = discard-before + play (`Player::playFrom`),
+  Delete, Move-to-N input, Shuffle-upcoming-only
+  (`Queue::shuffleUpcoming`), auto-advance on track end in the app layer
+  (display-filtered, so Previous keeps working). URI input dropped from
+  the GUI (play from Search; URIs still work in tests).
 - 2026-09-11 (Phase 10.1 Liked Songs): Web API calls share `web_get`
   (token + one 401 retry); login failures keep AUTH via a dedicated
   variant. Library pages cap at 50 (official cap; search's 10 is

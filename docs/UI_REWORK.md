@@ -14,15 +14,19 @@ Plan phases are untouched by this work unless stated.
 - Current single-window `build/gui.exe` relinked UNMODIFIED against the
   new snapshot: link exit 0, 14s smoke alive, no errors. Swap is safe.
 
-## Phase 2 — Main + Queue + Search (next)
+## Phase 2 — Main + Queue + Search (done, awaiting user test)
 
-- `App` owns one `Player`; per-window structs with open flags.
-- Viewports enabled; main loop gains Update/RenderPlatformWindows.
-- Queue window: current + numbered upcoming, Play Selected (discard
-  before + play), Delete, Move-to-N input, Shuffle upcoming, auto-advance
-  on track end (app layer, display-filtered so Previous keeps working).
-- Core additions: `Player::playFrom(i)`, `Queue::shuffleUpcoming()`.
-- Search window: existing search UI relocated.
+- `App` (`cpp/ui/app.*`) owns one `Player`; `Gui` split via `git mv`
+  (history kept). Views: main view in frame, `queue_window.cpp`,
+  `search_window.cpp` (no extra headers — view methods on `App`).
+- Viewports enabled; main loop runs Update/RenderPlatformWindows.
+- Queue window as specified; main window keeps nav (Queue/Search only),
+  artwork, title/artist, slider, controls, volume. URI input dropped.
+- Deviations from the proposal: main view stayed in `frame()` instead of
+  `main_window.*` (less churn, same modularity for the new windows);
+  single-instance focus via `SetNextWindowFocus`; positioning manager
+  stays Phase 3 (default cascade for now).
+- Verified: link exit 0, 14s smoke alive, core_test green (unaffected).
 
 ## Phase 3 — Playlists + Settings + positioning (later)
 
