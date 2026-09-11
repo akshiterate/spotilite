@@ -112,6 +112,27 @@ never-ready + `log::warn`.
 C++: `Player::requestArtwork/artworkReady/artworkPath` (bool/string +
 `lastError()`). No Rust past the core; no GUI yet (visual proof Phase 7).
 
+Phase 8 (current): Web API search (PKCE OAuth, additive):
+
+```c
+#define SPOTIFY_SEARCH_TRACK 1
+#define SPOTIFY_SEARCH_ARTIST 2
+#define SPOTIFY_SEARCH_ALBUM 4
+#define SPOTIFY_SEARCH_PLAYLIST 8
+#define SPOTIFY_SEARCH_ALL 15
+typedef struct SpotifySearchItem {
+    int32_t kind; char uri[128]; char name[256]; char subtitle[256];
+    uint32_t duration_ms;
+} SpotifySearchItem;
+int spotify_search(SpotifyPlayer*, const char* query, int types, int limit,
+                   int offset, SpotifySearchItem* items, int cap);
+```
+
+First call opens the browser once (`SPOTILITE_CLIENT_ID` env); refresh
+token cached machine-locally (`webapi.json`, never repo); 401 → refresh +
+single retry. Limit clamped 1..50, types 0 = all. Structured items — no
+JSON crosses into C++.
+
 Phase 7 (current): GUI `build/gui.exe` (`cpp/ui/gui.*`, Win32 + DX11,
 Dear ImGui v1.92.9b vendored) over the core only. URI input + Play,
 queue listbox + Play selected, current track (async metadata + 64px

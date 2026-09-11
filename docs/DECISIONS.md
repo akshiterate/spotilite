@@ -166,3 +166,16 @@ Append-only log: date, decision, why, alternatives rejected.
   thread, applied only if the track is still current (avoids cross-track
   races). Artwork textured on ARTWORK_READY from the deterministic disk
   path (128px).
+- 2026-09-11 (Phase 8): Search via Web API + PKCE OAuth (user chose over
+  tracks-only SpClient context search). New deps `librespot-oauth` (same
+  pinned rev), `reqwest 0.12` (SChannel defaults), `serde_json 1` — all
+  pre-compiled as transitive deps. Purpose: 4-type paged search now,
+  reusable tokens for Phase 10 library later. Rejected: SpClient
+  `spotify:search:` contexts (tracks only, quirky ranking), direct CDN
+  HTTP (no client in tree), JSON across the ABI (structured items
+  instead — no C++ JSON lib needed).
+- 2026-09-11 (Phase 8): Secrets hygiene — client_id pasted by the user is
+  runtime-only (`SPOTILITE_CLIENT_ID` env on first login, then cached
+  `webapi.json` machine-locally); never in repo, logs, or docs. Scopes
+  `user-library-read` + `playlist-read-private` pre-cover Phase 10 so one
+  login suffices (search itself needs no scope).
