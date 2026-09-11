@@ -40,3 +40,28 @@ connect blocks on network, other calls return after handing commands to
 the player thread (async playback errors via Phase 3 polling, not codes).
 Credentials: machine-local Phase 1 cache, same device id; connect is
 idempotent; missing cache fails with AUTH + message.
+
+Phase 3 (current): added event polling (foreseen by 1.7, additive only —
+no existing signature changed):
+
+```c
+#define SPOTIFY_EVENT_NONE 0
+#define SPOTIFY_EVENT_TRACK_STARTED 1
+#define SPOTIFY_EVENT_PLAYING 2
+#define SPOTIFY_EVENT_PAUSED 3
+#define SPOTIFY_EVENT_TRACK_ENDED 4
+#define SPOTIFY_EVENT_SEEKED 5
+#define SPOTIFY_EVENT_VOLUME_CHANGED 6
+#define SPOTIFY_EVENT_POSITION 7
+#define SPOTIFY_EVENT_URI_MAX 128
+typedef struct SpotifyEvent {
+    int32_t type; uint32_t position_ms; uint16_t volume; uint16_t reserved;
+    char uri[SPOTIFY_EVENT_URI_MAX];
+} SpotifyEvent;
+int spotify_poll_event(SpotifyPlayer*, SpotifyEvent*);  // 1 event / 0 none / <0 error
+```
+
+Poll drains unmodelled player events silently (preload hints, session/
+cluster updates, shuffle/repeat flags, queue dumps). Position events flow
+at 1s while playing (`position_update_interval`). Channel behind a Mutex;
+poison/disconnect surface as INTERNAL.

@@ -96,3 +96,9 @@ Append-only log: date, decision, why, alternatives rejected.
   Extra system libs required beyond the obvious: `ole32 oleaut32 propsys
   ntdll` (cpal/rodio COM + prop-variant + `NtCreateNamedPipeFile`). Test
   exe goes to `build/` (gitignored) to keep artifacts in one place.
+- 2026-09-11 (Phase 3): Added `spotify_poll_event` + `SpotifyEvent` to the
+  ABI. The Phase 3 scope marks the header "read-only unless ABI bug" — this
+  is the poll function 1.7 foresees by name, additive only, so it is treated
+  as sanctioned completion rather than redesign. Rejected: callbacks across
+  the ABI (1.7 forbids until required; polling suffices), exposing raw
+  librespot event enums (C++ must not depend on Rust types, 1.7).
