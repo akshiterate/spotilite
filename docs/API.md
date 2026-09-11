@@ -194,6 +194,15 @@ New scope `user-follow-read`; 403 "Insufficient client scope" triggers
 one automatic browser re-login from the cached client id. C++:
 `Player::followedArtists/artistTracks`. GUI: ARTISTS + ARTIST_TRACKS.
 
+Phase 11 (current): `%LOCALAPPDATA%\spotilite\spotilite.toml`
+(auto-created with defaults): device_name, bitrate (96/160/320),
+normalisation, volume (0..1), cache_size_mb. Rust-only parsing
+(`pub load_config`, shared by lib + headless); diagnostics via:
+
+```c
+int spotify_config_summary(char* out, int cap);
+```
+
 Phase 9 (current): full queue in `cpp/core/queue.h` — add/clear/next/
 previous/select/at/removeAt/move (index follows its track; removing the
 playing row doesn't stop it). `Player::loadUri` resets; `playCurrent` /

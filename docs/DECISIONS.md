@@ -226,6 +226,12 @@ Append-only log: date, decision, why, alternatives rejected.
   list shifted underneath it). Alt-Tab (or any focus loss to a foreign
   window) closes utility windows via WM_ACTIVATE + own-HWND check, per
   explicit user request; focus moving between our own windows is ignored.
+- 2026-09-11 (Phase 11): `spotilite.toml` next to the cache, five real
+  keys only (device name, bitrate, normalisation, volume, cache size);
+  cache location/Connect/startup skipped per the plan's own rule. New dep
+  `toml 0.8` (pure parser). Rust alone parses (single parser, no skew);
+  C++ never touches the file — Settings window shows path + restart note,
+  tests use `spotify_config_summary`. Bad values fall back per key.
 - 2026-09-11 (UI feedback round 3): queue shows row 0 = now playing
   (move target and delete exclude it; Play Selected on it replays);
   selection mapping is index-based so labels always match. Playlist,
