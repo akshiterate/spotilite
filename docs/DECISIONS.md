@@ -221,6 +221,12 @@ Append-only log: date, decision, why, alternatives rejected.
 - 2026-09-11 (post-Phase 9 GUI polish): search Play-result used resetting
   `loadUri` (queue wipe). New `Queue::insertAt` + `Player::playFirst` put
   the track on top and play it, preserving the rest.
+- 2026-09-11 (UI rework phase 1): `third_party/imgui` master v1.92.9b →
+  docking snapshot `367b2c2` ("1.93.0 WIP"). Reason: master has no
+  multi-OS-window support (verified absent: no UpdatePlatformWindows /
+  ViewportsEnable); docking branch is the ImGui-sanctioned path, same
+  dep, same license, same direct-g++ build. Current GUI relinked
+  unmodified + smoked green. Progress tracked in `docs/UI_REWORK.md`.
 - 2026-09-11 (Phase 10.1 Liked Songs): Web API calls share `web_get`
   (token + one 401 retry); login failures keep AUTH via a dedicated
   variant. Library pages cap at 50 (official cap; search's 10 is
