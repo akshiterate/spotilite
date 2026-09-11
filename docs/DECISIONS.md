@@ -187,6 +187,12 @@ Append-only log: date, decision, why, alternatives rejected.
   error pair); only track rows play, other kinds report it. Live test:
   coordinated browser login worked first try; cached refresh needs no env
   afterwards; searched track played end to end with correct metadata.
+- 2026-09-11 (Phase 9): Queue owns remove/reorder; index follows its track
+  on both (removing the playing row doesn't stop playback — matches common
+  players). `loadUri` (reset) split from queue-preserving `loadCurrent`;
+  next/previous/play-selected navigate without collapsing the queue, which
+  the old always-reset behavior defeated. GUI manipulates via the public
+  queue + `playCurrent`; any search row can enqueue (play validates).
 - 2026-09-11 (Phase 8): Spotify search `limit` caps at 10 (bisected live:
   10 ok, 11/15/20/50 → 400 "Invalid limit"); bridge clamps 1..10. Up to
   40 rows/call across types keeps the plan's 20–50 page.

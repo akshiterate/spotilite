@@ -138,6 +138,12 @@ C++: `spotilite::SearchResult` + `SearchKind` (`SEARCH_ANY` = all; `ALL`
 is a Windows macro) + `Player::search()` into a vector. GUI: async Find,
 results listbox, Play-result (tracks only).
 
+Phase 9 (current): full queue in `cpp/core/queue.h` — add/clear/next/
+previous/select/at/removeAt/move (index follows its track; removing the
+playing row doesn't stop it). `Player::loadUri` resets; `playCurrent` /
+`next` / `previous` navigate preserving the queue. GUI: Add URI, Del,
+Up/Down, Add-to-queue from results; Play selected keeps the queue.
+
 Phase 7 (current): GUI `build/gui.exe` (`cpp/ui/gui.*`, Win32 + DX11,
 Dear ImGui v1.92.9b vendored) over the core only. URI input + Play,
 queue listbox + Play selected, current track (async metadata + 64px
