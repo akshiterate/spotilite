@@ -33,6 +33,9 @@ use librespot::{
     },
 };
 
+use librespot_oauth::{OAuthClientBuilder, OAuthToken};
+use serde_json::Value;
+
 const DEVICE_ID_FILE: &str = "device-id";
 
 /// Opaque to C++; see `include/spotify_bridge.h` for the contract.
@@ -49,6 +52,7 @@ pub struct SpotifyPlayer {
     art_tx: tokio::sync::mpsc::UnboundedSender<String>,
     art_rx: Mutex<tokio::sync::mpsc::UnboundedReceiver<String>>,
     art_mem: Mutex<ArtFifo>,
+    web_token: Mutex<Option<OAuthToken>>,
 }
 
 // Small in-memory artwork cache: 128px BMP bytes keyed by track id, FIFO
@@ -201,6 +205,7 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
                 map: HashMap::new(),
                 order: VecDeque::new(),
             }),
+            web_token: Mutex::new(None),
         };
         Ok(Box::into_raw(Box::new(handle)))
     };
@@ -916,6 +921,339 @@ pub unsafe extern "C" fn spotify_artwork_path(
         *out.add(text.len()) = 0;
     }
     SPOTIFY_OK
+}
+
+const SPOTIFY_SEARCH_TRACK: i32 = 1;
+const SPOTIFY_SEARCH_ARTIST: i32 = 2;
+const SPOTIFY_SEARCH_ALBUM: i32 = 4;
+const SPOTIFY_SEARCH_PLAYLIST: i32 = 8;
+const SPOTIFY_SEARCH_NAME_MAX: usize = 256;
+const SPOTIFY_SEARCH_SUBTITLE_MAX: usize = 256;
+
+const WEBAPI_REDIRECT: &str = "http://127.0.0.1:8898/login";
+// Search needs no scope; these two pre-cover the Phase 10 library so the
+// user logs in only once. Both are standard grants for custom apps.
+const WEBAPI_SCOPES: [&str; 2] = ["user-library-read", "playlist-read-private"];
+const WEBAPI_CACHE_FILE: &str = "webapi.json";
+
+/// C layout twin of `SpotifySearchItem` (field order and types must match).
+#[repr(C)]
+pub struct SpotifySearchItem {
+    pub kind: i32,
+    pub uri: [c_char; SPOTIFY_META_URI_MAX],
+    pub name: [c_char; SPOTIFY_SEARCH_NAME_MAX],
+    pub subtitle: [c_char; SPOTIFY_SEARCH_SUBTITLE_MAX],
+    pub duration_ms: u32,
+}
+
+fn web_cache_path() -> PathBuf {
+    cache_dir().join(WEBAPI_CACHE_FILE)
+}
+
+fn read_web_cache() -> Option<(String, String)> {
+    let text = std::fs::read_to_string(web_cache_path()).ok()?;
+    let value: Value = serde_json::from_str(&text).ok()?;
+    Some((
+        value.get("client_id")?.as_str()?.to_owned(),
+        value.get("refresh_token")?.as_str()?.to_owned(),
+    ))
+}
+
+fn write_web_cache(client_id: &str, refresh_token: &str) {
+    let text = serde_json::json!({"client_id": client_id, "refresh_token": refresh_token}).to_string();
+    let _ = std::fs::write(web_cache_path(), text);
+}
+
+fn browser_login(client_id: &str) -> Result<OAuthToken, String> {
+    OAuthClientBuilder::new(client_id, WEBAPI_REDIRECT, WEBAPI_SCOPES.to_vec())
+        .open_in_browser()
+        .build()
+        .map_err(|e| format!("oauth setup: {e}"))?
+        .get_access_token()
+        .map_err(|e| format!("browser login: {e}"))
+}
+
+// Valid cached access token, refreshing or logging in as needed. Refresh
+// failures fall back to a browser login; a missing client id is an error
+// telling the user exactly what to set.
+fn ensure_access_token(handle: &SpotifyPlayer) -> Result<String, String> {
+    if let Ok(guard) = handle.web_token.lock() {
+        if let Some(token) = guard.as_ref() {
+            if std::time::Instant::now() + std::time::Duration::from_secs(60) < token.expires_at {
+                return Ok(token.access_token.clone());
+            }
+        }
+    }
+    let cached = read_web_cache();
+    let client_id = std::env::var("SPOTILITE_CLIENT_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| cached.as_ref().map(|(id, _)| id.clone()))
+        .ok_or_else(|| {
+            "no Spotify app configured: set SPOTILITE_CLIENT_ID to your client id, then search again to log in".to_owned()
+        })?;
+    let client = OAuthClientBuilder::new(&client_id, WEBAPI_REDIRECT, WEBAPI_SCOPES.to_vec())
+        .build()
+        .map_err(|e| format!("oauth setup: {e}"))?;
+    let token = match cached.map(|(_, refresh)| refresh) {
+        Some(refresh) => match client.refresh_token(&refresh) {
+            Ok(token) => token,
+            Err(_) => browser_login(&client_id)?,
+        },
+        None => browser_login(&client_id)?,
+    };
+    write_web_cache(&client_id, &token.refresh_token);
+    if let Ok(mut guard) = handle.web_token.lock() {
+        *guard = Some(token.clone());
+    }
+    Ok(token.access_token)
+}
+
+enum SearchError {
+    Unauthorized,
+    Other(String),
+}
+
+async fn web_search(
+    token: &str,
+    query: &str,
+    types: &str,
+    limit: i64,
+    offset: i64,
+) -> Result<Value, SearchError> {
+    let response = reqwest::Client::new()
+        .get("https://api.spotify.com/v1/search")
+        .query(&[
+            ("q", query.to_owned()),
+            ("type", types.to_owned()),
+            ("limit", limit.to_string()),
+            ("offset", offset.to_string()),
+        ])
+        .bearer_auth(token)
+        .send()
+        .await
+        .map_err(|e| SearchError::Other(format!("search request: {e}")))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|e| SearchError::Other(format!("search body: {e}")))?;
+    if status.as_u16() == 401 {
+        return Err(SearchError::Unauthorized);
+    }
+    if !status.is_success() {
+        return Err(SearchError::Other(format!("search http {status}: {text}")));
+    }
+    serde_json::from_str(&text).map_err(|e| SearchError::Other(format!("search parse: {e}")))
+}
+
+struct RawItem {
+    kind: i32,
+    uri: String,
+    name: String,
+    subtitle: String,
+    duration_ms: u32,
+}
+
+fn str_field(value: &Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_owned()
+}
+
+fn artists_of(value: &Value) -> String {
+    value
+        .get("artists")
+        .and_then(|a| a.as_array())
+        .map(|arr| {
+            arr.iter()
+                .map(|a| str_field(a, "name"))
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default()
+}
+
+fn push_tracks(out: &mut Vec<RawItem>, value: &Value) {
+    if let Some(items) = value.get("tracks").and_then(|t| t.get("items")).and_then(|i| i.as_array()) {
+        for item in items {
+            out.push(RawItem {
+                kind: SPOTIFY_SEARCH_TRACK,
+                uri: str_field(item, "uri"),
+                name: str_field(item, "name"),
+                subtitle: artists_of(item),
+                duration_ms: item
+                    .get("duration_ms")
+                    .and_then(|d| d.as_u64())
+                    .unwrap_or(0) as u32,
+            });
+        }
+    }
+}
+
+fn push_artists(out: &mut Vec<RawItem>, value: &Value) {
+    if let Some(items) = value.get("artists").and_then(|t| t.get("items")).and_then(|i| i.as_array()) {
+        for item in items {
+            let genres = item
+                .get("genres")
+                .and_then(|g| g.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|g| g.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_default();
+            out.push(RawItem {
+                kind: SPOTIFY_SEARCH_ARTIST,
+                uri: str_field(item, "uri"),
+                name: str_field(item, "name"),
+                subtitle: genres,
+                duration_ms: 0,
+            });
+        }
+    }
+}
+
+fn push_albums(out: &mut Vec<RawItem>, value: &Value) {
+    if let Some(items) = value.get("albums").and_then(|t| t.get("items")).and_then(|i| i.as_array()) {
+        for item in items {
+            out.push(RawItem {
+                kind: SPOTIFY_SEARCH_ALBUM,
+                uri: str_field(item, "uri"),
+                name: str_field(item, "name"),
+                subtitle: artists_of(item),
+                duration_ms: 0,
+            });
+        }
+    }
+}
+
+fn push_playlists(out: &mut Vec<RawItem>, value: &Value) {
+    if let Some(items) = value.get("playlists").and_then(|t| t.get("items")).and_then(|i| i.as_array()) {
+        for item in items {
+            let owner = item
+                .get("owner")
+                .map(|o| str_field(o, "display_name"))
+                .unwrap_or_default();
+            out.push(RawItem {
+                kind: SPOTIFY_SEARCH_PLAYLIST,
+                uri: str_field(item, "uri"),
+                name: str_field(item, "name"),
+                subtitle: owner,
+                duration_ms: 0,
+            });
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_search(
+    player: *mut SpotifyPlayer,
+    query: *const c_char,
+    types: std::os::raw::c_int,
+    limit: std::os::raw::c_int,
+    offset: std::os::raw::c_int,
+    items: *mut SpotifySearchItem,
+    cap: std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if let Err((code, msg)) = check_connected(handle) {
+        return fail(code, msg);
+    }
+    if query.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null query".to_owned());
+    }
+    // SAFETY: null-checked; caller passes valid UTF-8 per header.
+    let query_text = match unsafe { CStr::from_ptr(query) }.to_str() {
+        Ok(s) if !s.trim().is_empty() => s.trim().to_owned(),
+        _ => return fail(SPOTIFY_ERR_BAD_URI, "empty query".to_owned()),
+    };
+    if items.is_null() || cap <= 0 {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null/short items buffer".to_owned());
+    }
+    let mask = if types == 0 { 15 } else { types & 15 };
+    if mask == 0 {
+        return fail(SPOTIFY_ERR_BAD_URI, "no result types selected".to_owned());
+    }
+    let mut type_names = Vec::new();
+    if mask & SPOTIFY_SEARCH_TRACK != 0 {
+        type_names.push("track");
+    }
+    if mask & SPOTIFY_SEARCH_ARTIST != 0 {
+        type_names.push("artist");
+    }
+    if mask & SPOTIFY_SEARCH_ALBUM != 0 {
+        type_names.push("album");
+    }
+    if mask & SPOTIFY_SEARCH_PLAYLIST != 0 {
+        type_names.push("playlist");
+    }
+    let limit_c = limit.clamp(1, 50) as i64;
+    let offset_c = offset.max(0) as i64;
+
+    let mut token = match ensure_access_token(handle) {
+        Ok(t) => t,
+        Err(msg) => return fail(SPOTIFY_ERR_AUTH, msg),
+    };
+    let run = |token: &str| {
+        handle.rt.block_on(web_search(
+            token,
+            &query_text,
+            &type_names.join(","),
+            limit_c,
+            offset_c,
+        ))
+    };
+    let mut value = run(&token);
+    if matches!(value, Err(SearchError::Unauthorized)) {
+        if let Ok(mut guard) = handle.web_token.lock() {
+            *guard = None;
+        }
+        token = match ensure_access_token(handle) {
+            Ok(t) => t,
+            Err(msg) => return fail(SPOTIFY_ERR_AUTH, msg),
+        };
+        value = run(&token);
+    }
+    let value = match value {
+        Ok(v) => v,
+        Err(SearchError::Unauthorized) => {
+            return fail(SPOTIFY_ERR_AUTH, "search unauthorized even after refresh".to_owned())
+        }
+        Err(SearchError::Other(msg)) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+    };
+
+    let mut raw: Vec<RawItem> = Vec::new();
+    if mask & SPOTIFY_SEARCH_TRACK != 0 {
+        push_tracks(&mut raw, &value);
+    }
+    if mask & SPOTIFY_SEARCH_ARTIST != 0 {
+        push_artists(&mut raw, &value);
+    }
+    if mask & SPOTIFY_SEARCH_ALBUM != 0 {
+        push_albums(&mut raw, &value);
+    }
+    if mask & SPOTIFY_SEARCH_PLAYLIST != 0 {
+        push_playlists(&mut raw, &value);
+    }
+    let count = raw.len().min(cap as usize);
+    // SAFETY: null- and bounds-checked above; caller provides `cap` slots.
+    let dest = unsafe { std::slice::from_raw_parts_mut(items, cap as usize) };
+    for (i, item) in raw.iter().take(count).enumerate() {
+        dest[i].kind = item.kind;
+        fill_str(&mut dest[i].uri, &item.uri);
+        fill_str(&mut dest[i].name, &item.name);
+        fill_str(&mut dest[i].subtitle, &item.subtitle);
+        dest[i].duration_ms = item.duration_ms;
+    }
+    count as std::os::raw::c_int
 }
 
 #[no_mangle]

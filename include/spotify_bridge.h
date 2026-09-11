@@ -150,6 +150,33 @@ int spotify_artwork_state(SpotifyPlayer* player, const char* uri, int size,
 int spotify_artwork_path(SpotifyPlayer* player, const char* uri, int size,
                          char* out, int cap);
 
+// Spotify Web API search (Phase 8). Auth is PKCE OAuth: first call opens
+// the browser for a one-time login (needs SPOTILITE_CLIENT_ID in the
+// environment), then a refresh token in the machine-local cache keeps it
+// working without further logins. Blocking network call.
+#define SPOTIFY_SEARCH_TRACK 1
+#define SPOTIFY_SEARCH_ARTIST 2
+#define SPOTIFY_SEARCH_ALBUM 4
+#define SPOTIFY_SEARCH_PLAYLIST 8
+#define SPOTIFY_SEARCH_ALL 15
+
+#define SPOTIFY_SEARCH_NAME_MAX 256
+#define SPOTIFY_SEARCH_SUBTITLE_MAX 256
+
+typedef struct SpotifySearchItem {
+    int32_t kind;  // one of SPOTIFY_SEARCH_* (single bit)
+    char uri[SPOTIFY_META_URI_MAX];
+    char name[SPOTIFY_SEARCH_NAME_MAX];
+    char subtitle[SPOTIFY_SEARCH_SUBTITLE_MAX];  // artists / owner
+    uint32_t duration_ms;  // tracks only, else 0
+} SpotifySearchItem;
+
+// Search `query` (types bitmask, 0 = all), page `limit` (1..50 clamped)
+// starting at `offset`. Fills up to `cap` items, returns the count, or a
+// negative error code. Never loads more than requested (paged).
+int spotify_search(SpotifyPlayer* player, const char* query, int types,
+                   int limit, int offset, SpotifySearchItem* items, int cap);
+
 // Human-readable description of the last failure on the calling thread.
 // Never NULL. Pass NULL to read a creation-time failure.
 const char* spotify_last_error(const SpotifyPlayer* player);

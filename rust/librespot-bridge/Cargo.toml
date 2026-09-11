@@ -20,3 +20,9 @@ futures-util = "0.3"
 # Phase 6 artwork: JPEG decode (CDN bytes) + resize + BMP encode for the
 # C-verifiable disk cache. No default features to keep the tree small.
 image = { version = "0.25", default-features = false, features = ["jpeg", "bmp"] }
+# Phase 8 search: PKCE OAuth (same pinned rev) + HTTPS + JSON. reqwest
+# defaults (SChannel TLS) match the Phase 0 native-tls choice; all three
+# were already compiled as transitive deps of librespot-oauth.
+librespot-oauth = { git = "https://github.com/librespot-org/librespot", rev = "a1b66d3c8a14e55a9572a9e17467150dca618c9a" }
+reqwest = "0.12"
+serde_json = "1"
