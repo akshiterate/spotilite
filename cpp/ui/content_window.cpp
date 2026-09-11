@@ -31,7 +31,23 @@ void App::openContent(const std::string& key, const std::string& title, bool isL
         int total = 0;
         bool ok = false;
         if (isLiked) {
-            ok = player_.likedTracks(50, 0, out.first, total);
+            // Liked has real totals: page until complete (cap 500).
+            ok = true;
+            int offset = 0;
+            while (ok && static_cast<int>(out.first.size()) < 500) {
+                std::vector<SearchResult> page;
+                int pageTotal = 0;
+                ok = player_.likedTracks(50, offset, page, pageTotal);
+                if (!ok || page.empty()) {
+                    break;
+                }
+                total = pageTotal;
+                offset += static_cast<int>(page.size());
+                out.first.insert(out.first.end(), page.begin(), page.end());
+                if (offset >= total) {
+                    break;
+                }
+            }
         } else {
             ok = player_.playlistTracks(key, 50, 0, out.first, total);
         }
@@ -55,7 +71,7 @@ void App::drawContentWindows() {
             it->focusMe = false;
         }
         if (it->placeMe) {
-            placeMe("content", ImVec2(460, 440), cascade);
+            placeMe("content", ImVec2(460, 0), cascade);
             it->placeMe = false;
         }
         ++cascade;

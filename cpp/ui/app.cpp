@@ -471,6 +471,7 @@ void App::frame() {
     if (ImGui::Button("Settings")) {
         settingsOpen_ = true;
         focusSettings_ = true;
+        placeSettings_ = true;
     }
 
     // 3+7. Current track + small artwork.
@@ -594,6 +595,9 @@ int App::run() {
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;  // no imgui.ini droppings
     io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;  // separate OS windows
+    // Secondary OS windows stay in the main window's family: no taskbar
+    // buttons, no Alt-Tab entries (backend already parents them to it).
+    io.ConfigViewportsNoTaskBarIcon = true;
     ImGui::StyleColorsDark();
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);

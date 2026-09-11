@@ -303,6 +303,9 @@ int main(int argc, char** argv) {
         check(meta.durationMs > 60000 && meta.durationMs < 3600000,
               "metadata duration sane (1min..1h)");
         check(meta.uri == uri, "metadata uri echoes load");
+        spotilite::TrackMetadata meta2;
+        check(player.metadataFor(uri, meta2) && meta2.title == meta.title,
+              "metadataFor matches", player.lastError());
 
         // Artwork: request, then wait up to 20s for the background fetch
         // while playback continues. BMP dims read straight from headers.

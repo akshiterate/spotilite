@@ -129,6 +129,10 @@ typedef struct SpotifyMetadata {
 // not connected or when nothing was loaded yet.
 int spotify_current_metadata(SpotifyPlayer* player, SpotifyMetadata* out);
 
+// Same, for any playable URI (queue display, etc.). Blocks on network.
+int spotify_metadata_for_uri(SpotifyPlayer* player, const char* uri,
+                             SpotifyMetadata* out);
+
 // Album artwork (librespot cover bytes, downscaled, cached). Fetch runs in
 // the background and never blocks playback or the caller: request, then
 // watch for SPOTIFY_EVENT_ARTWORK_READY (uri = the requested track URI).

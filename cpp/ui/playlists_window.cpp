@@ -16,7 +16,7 @@ void App::drawPlaylistsWindow() {
         focusPlaylists_ = false;
     }
     if (placePlaylists_) {
-        placeMe("playlists", ImVec2(420, 420), 0);
+        placeMe("playlists", ImVec2(420, 0), 0);
         placePlaylists_ = false;
     }
     if (!ImGui::Begin("Playlists", &playlistsOpen_)) {

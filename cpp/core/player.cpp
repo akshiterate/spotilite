@@ -115,6 +115,20 @@ bool Player::metadata(TrackMetadata& out) {
     return true;
 }
 
+bool Player::metadataFor(const std::string& uri, TrackMetadata& out) {
+    SpotifyMetadata raw{};
+    if (!callOk(spotify_metadata_for_uri(handle_, uri.c_str(), &raw))) {
+        return false;
+    }
+    out.title = raw.title;
+    out.artist = raw.artist;
+    out.album = raw.album;
+    out.durationMs = raw.duration_ms;
+    out.uri = raw.uri;
+    out.trackId = raw.track_id;
+    return true;
+}
+
 bool Player::search(const std::string& query, int types, int limit, int offset,
                     std::vector<SearchResult>& out) {
     out.clear();

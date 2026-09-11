@@ -11,6 +11,10 @@ void App::drawSettingsWindow() {
         ImGui::SetNextWindowFocus();
         focusSettings_ = false;
     }
+    if (placeSettings_) {
+        placeMe("settings", ImVec2(320, 0), 0);
+        placeSettings_ = false;
+    }
     if (!ImGui::Begin("Settings", &settingsOpen_)) {
         ImGui::End();
         return;

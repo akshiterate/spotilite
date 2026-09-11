@@ -221,6 +221,13 @@ Append-only log: date, decision, why, alternatives rejected.
 - 2026-09-11 (post-Phase 9 GUI polish): search Play-result used resetting
   `loadUri` (queue wipe). New `Queue::insertAt` + `Player::playFirst` put
   the track on top and play it, preserving the rest.
+- 2026-09-11 (UI feedback round): queue rows show `title - artist` via a
+  background name cache (`spotify_metadata_for_uri`, 200-entry cap, URIs
+  until names land). Secondary windows auto-height (fixed widths kept);
+  `ConfigViewportsNoTaskBarIcon` keeps them in the main window's family
+  (no taskbar buttons, no Alt-Tab entries; backend already parents them).
+  Liked content windows page to completion (cap 500). Playlist/artist
+  drill-ins follow context page_urls (10-page cap) with real totals.
 - 2026-09-11 (UI rework phase 3): playlists + settings + placer.
   Content windows fetch own rows async (liked: 50; playlists: context
   page); closed ones are destroyed. `Add Playlist to Queue` enqueues all

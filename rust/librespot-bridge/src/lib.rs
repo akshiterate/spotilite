@@ -10,7 +10,7 @@
 //! C++ core). `resume` is provided and maps to `play`.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_float};
 use std::path::PathBuf;
@@ -655,12 +655,59 @@ pub unsafe extern "C" fn spotify_current_metadata(
     };
     // SAFETY: null-checked above; caller provides storage.
     let dest = unsafe { &mut *out };
+    write_metadata(dest, &meta);
+    SPOTIFY_OK
+}
+
+fn write_metadata(dest: &mut SpotifyMetadata, meta: &FetchedMetadata) {
     fill_slot(&mut dest.title, &meta.title);
     fill_slot(&mut dest.artist, &meta.artist);
     fill_slot(&mut dest.album, &meta.album);
     dest.duration_ms = meta.duration_ms;
     fill_slot(&mut dest.uri, &meta.uri);
     fill_slot(&mut dest.track_id, &meta.track_id);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_metadata_for_uri(
+    player: *mut SpotifyPlayer,
+    uri: *const c_char,
+    out: *mut SpotifyMetadata,
+) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if let Err((code, msg)) = check_connected(handle) {
+        return fail(code, msg);
+    }
+    if out.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null metadata out-pointer".to_owned());
+    }
+    let uri_text = match read_uri_arg(uri) {
+        Ok(s) => s,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let parsed = match SpotifyUri::from_uri(&uri_text) {
+        Ok(u) if u.is_playable() => u,
+        Ok(_) => {
+            return fail(
+                SPOTIFY_ERR_BAD_URI,
+                format!("uri is not playable audio: {uri_text}"),
+            )
+        }
+        Err(e) => return fail(SPOTIFY_ERR_BAD_URI, format!("bad uri: {e}")),
+    };
+    let meta = match handle
+        .rt
+        .block_on(fetch_metadata(&handle.session, &parsed))
+    {
+        Ok(m) => m,
+        Err(msg) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+    };
+    // SAFETY: null-checked above; caller provides storage.
+    let dest = unsafe { &mut *out };
+    write_metadata(dest, &meta);
     SPOTIFY_OK
 }
 
@@ -705,8 +752,7 @@ fn read_uri_arg(uri: *const c_char) -> Result<String, (std::os::raw::c_int, Stri
 }
 
 // Largest cover first: best source for downscaling.
-fn widest_cover(covers: &librespot::metadata::image::Images) -> Option<librespot::core::FileId> {
-    covers
+fn widest_cover(covers: &librespot::metadata::image::Images) -> Option<librespot::core::FileId> {    covers
         .iter()
         .max_by_key(|img| img.width)
         .map(|img| img.id)
@@ -1418,25 +1464,56 @@ pub unsafe extern "C" fn spotify_playlists(
 
 // First-page context tracks with concurrent metadata names. Shared by
 // playlist + artist drill-ins (Web API items are restricted for new apps).
+// Extracts "spotify:album:XYZ" from "hm://artistplaycontext/v1/page/spotify/album/XYZ/..."
+// (mirrors librespot's private page_url_to_uri).
+fn page_url_to_uri(page_url: &str) -> String {
+    let rest = page_url.strip_prefix("hm://").unwrap_or(page_url);
+    rest.split('/')
+        .skip_while(|s| *s != "spotify")
+        .take(3)
+        .collect::<Vec<&str>>()
+        .join(":")
+}
+
 async fn context_track_items(
     handle: &SpotifyPlayer,
     context_uri: &str,
     limit_c: usize,
     offset_c: usize,
-) -> Result<Vec<RawItem>, String> {
+) -> Result<(Vec<RawItem>, usize), String> {
     let session = &handle.session;
-    let ctx = session
-        .spclient()
-        .get_context(context_uri)
-        .await
-        .map_err(|e| format!("context resolve: {e}"))?;
-    let uris: Vec<String> = ctx
-        .pages
-        .iter()
-        .flat_map(|page| page.tracks.iter())
-        .filter_map(|track| track.uri.clone())
-        .filter(|uri| !uri.is_empty())
-        .collect();
+    // Follow empty-track pages via their page_url (same walk Spirc does),
+    // capped to bound huge playlists. First page is usually complete.
+    let mut uris: Vec<String> = Vec::new();
+    let mut pending: Vec<String> = vec![context_uri.to_owned()];
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut fetches = 0;
+    while let Some(uri) = pending.pop() {
+        if !seen.insert(uri.clone()) || fetches >= 10 {
+            continue;
+        }
+        fetches += 1;
+        let ctx = session
+            .spclient()
+            .get_context(&uri)
+            .await
+            .map_err(|e| format!("context resolve: {e}"))?;
+        for page in &ctx.pages {
+            if !page.tracks.is_empty() {
+                uris.extend(
+                    page.tracks
+                        .iter()
+                        .filter_map(|track| track.uri.clone())
+                        .filter(|u| !u.is_empty()),
+                );
+            } else if let Some(url) = page.page_url.as_deref() {
+                if !url.is_empty() {
+                    pending.push(page_url_to_uri(url));
+                }
+            }
+        }
+    }
+    let total = uris.len();
     let page: Vec<String> = uris.into_iter().skip(offset_c).take(limit_c).collect();
     let metas = futures_util::future::join_all(page.iter().map(|uri_text| async {
         let parsed = match SpotifyUri::from_uri(uri_text).ok() {
@@ -1462,7 +1539,7 @@ async fn context_track_items(
             duration_ms: meta.duration_ms,
         });
     }
-    Ok(raw)
+    Ok((raw, total))
 }
 
 #[no_mangle]
@@ -1500,21 +1577,17 @@ pub unsafe extern "C" fn spotify_playlist_tracks(
     // attach names with concurrent metadata fetches.
     let limit_c = (limit.clamp(1, 50) as usize).min(cap as usize);
     let offset_c = offset.max(0) as usize;
-    let mut raw = match handle.rt.block_on(context_track_items(
+    let (mut raw, total) = match handle.rt.block_on(context_track_items(
         handle,
         &format!("spotify:playlist:{id}"),
         limit_c,
         offset_c,
     )) {
-        Ok(r) => r,
+        Ok(v) => v,
         Err(msg) => return fail(SPOTIFY_ERR_INTERNAL, msg),
     };
     let count = fill_items(items, cap as usize, &mut raw);
-    // Total track count isn't exposed by first-page context resolution.
-    // SAFETY: null-checked above; caller provides storage.
-    unsafe {
-        *total_out = -1;
-    }
+    write_total(total_out, total as u64);
     count as std::os::raw::c_int
 }
 
@@ -1770,20 +1843,17 @@ pub unsafe extern "C" fn spotify_artist_tracks(
     };
     let limit_c = (limit.clamp(1, 50) as usize).min(cap as usize);
     let offset_c = offset.max(0) as usize;
-    let mut raw = match handle.rt.block_on(context_track_items(
+    let (mut raw, total) = match handle.rt.block_on(context_track_items(
         handle,
         &format!("spotify:artist:{id}"),
         limit_c,
         offset_c,
     )) {
-        Ok(r) => r,
+        Ok(v) => v,
         Err(msg) => return fail(SPOTIFY_ERR_INTERNAL, msg),
     };
     let count = fill_items(items, cap as usize, &mut raw);
-    // SAFETY: null-checked above; caller provides storage.
-    unsafe {
-        *total_out = -1;
-    }
+    write_total(total_out, total as u64);
     count as std::os::raw::c_int
 }
 

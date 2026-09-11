@@ -7,6 +7,7 @@
 #include <d3d11.h>
 
 #include <future>
+#include <map>
 #include <string>
 #include <tuple>
 #include <utility>
@@ -77,6 +78,15 @@ private:
     int libBackPage_ = 0;
     int seekPosSec_ = 0;
     bool seekHeld_ = false;
+    // Track-name cache for queue rows (filled in the background).
+    std::map<std::string, TrackMetadata> nameCache_;
+    struct PendingNames {
+        bool active = false;
+        std::future<std::map<std::string, TrackMetadata>> future;
+    };
+    PendingNames pendingNames_;
+    void ensureNames();
+    std::string trackLabel(const std::string& uri);
     std::string lastUri_;
     std::string error_;
 
@@ -108,6 +118,7 @@ private:
     bool placeQueue_ = false;
     bool placeSearch_ = false;
     bool placePlaylists_ = false;
+    bool placeSettings_ = false;
     struct ContentWin {
         std::string key;
         std::string title;

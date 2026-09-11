@@ -70,6 +70,7 @@ public:
     bool seek(uint32_t positionMs);
     bool setVolume(float volume);  // 0.0..1.0, clamped by the bridge
     bool metadata(TrackMetadata& out);  // fetch for last loaded URI
+    bool metadataFor(const std::string& uri, TrackMetadata& out);  // any URI
     // Web API search (blocking network). Types bitmask of SearchKind.
     bool search(const std::string& query, int types, int limit, int offset,
                 std::vector<SearchResult>& out);
