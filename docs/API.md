@@ -65,3 +65,11 @@ Poll drains unmodelled player events silently (preload hints, session/
 cluster updates, shuffle/repeat flags, queue dumps). Position events flow
 at 1s while playing (`position_update_interval`). Channel behind a Mutex;
 poison/disconnect surface as INTERNAL.
+
+Phase 3 (current): C++ core in `cpp/core/` — the only layer frontends may
+use. `spotilite::Player` (RAII over the ABI above):
+connect/loadUri/play/pause/resume/seek/setVolume/next/previous/enqueue,
+`pollEvent`/`drainEvents`, mirrored `PlaybackState`
+(connected/playing/currentUri/volume/positionMs), bool + `lastError()`
+errors. `spotilite::Queue` (header-only): add/clear/next/previous/select;
+`loadUri` resets it to the single URI. No Rust symbols leak past the core.

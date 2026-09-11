@@ -96,6 +96,13 @@ Append-only log: date, decision, why, alternatives rejected.
   Extra system libs required beyond the obvious: `ole32 oleaut32 propsys
   ntdll` (cpal/rodio COM + prop-variant + `NtCreateNamedPipeFile`). Test
   exe goes to `build/` (gitignored) to keep artifacts in one place.
+- 2026-09-11 (Phase 3): Core owns the queue; `loadUri` resets it to the
+  single URI (predictable solo-play semantics). `Player` mirrors state from
+  polled events (optimistic `playing=true` on load, corrected by events);
+  errors as bool + `lastError()`, exceptions only from the throwing ctor.
+  Queue is header-only; remove/reorder deferred to Phase 9. Core test is
+  scripted (exit 0/1) rather than interactive so runs are reproducible;
+  `bridge_test` stays interactive for manual probing.
 - 2026-09-11 (Phase 3): Added `spotify_poll_event` + `SpotifyEvent` to the
   ABI. The Phase 3 scope marks the header "read-only unless ABI bug" — this
   is the poll function 1.7 foresees by name, additive only, so it is treated
