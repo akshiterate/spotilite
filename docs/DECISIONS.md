@@ -261,6 +261,10 @@ Append-only log: date, decision, why, alternatives rejected.
   content was still loading, so search/playlists/content windows stayed
   tiny. They now refit once when rows land (size flags consumed before
   Begin).
+- 2026-09-11 (UI feedback round 6): main window spread + centered
+  (nav/artwork/title/slider/controls/volume), hero artwork 192px from
+  the cached 256px file, 90%-width slider, large fixed-size transport
+  buttons, bigger OS window (560x540).
 - 2026-09-11 (UI feedback round 4): sizing pass — main OS window 660x900
   → 560x460; sub windows widened (queue 470, search/content 560,
   playlists 500) with more visible rows (8/8/10 → 10/10/12); heights stay

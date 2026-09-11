@@ -466,7 +466,7 @@ void App::updateShared() {
         }
         if (event.type == SPOTIFY_EVENT_ARTWORK_READY && !event.uri.empty() &&
             event.uri == player_.state().currentUri) {
-            const std::string path = player_.artworkPath(event.uri, SPOTIFY_ART_128);
+            const std::string path = player_.artworkPath(event.uri, SPOTIFY_ART_256);
             if (!path.empty() && loadArtTexture(path)) {
                 artUri_ = event.uri;
             }
@@ -524,73 +524,86 @@ void App::frame() {
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
 
+    const float availX = ImGui::GetContentRegionAvail().x;
+    const float spacingX = ImGui::GetStyle().ItemSpacing.x;
+    auto centerX = [&](float w) { ImGui::SetCursorPosX((availX - w) * 0.5f); };
+    auto centerText = [&](const char* text) {
+        centerX(ImGui::CalcTextSize(text).x);
+        ImGui::Text("%s", text);
+    };
+
     // Navigation bar: secondary views are separate OS windows.
-    if (ImGui::Button("Queue")) {
-        queueOpen_ = true;
-        focusQueue_ = true;
-        placeQueue_ = true;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Search")) {
-        searchOpen_ = true;
-        focusSearch_ = true;
-        placeSearch_ = true;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Playlists")) {
-        playlistsOpen_ = true;
-        focusPlaylists_ = true;
-        placePlaylists_ = true;
-        fetchLibrary(LibMode::PLAYLISTS, 0, "", "");
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Settings")) {
-        openSettings();
+    {
+        const float navW = 110.0f * 4 + spacingX * 3;
+        centerX(navW);
+        if (ImGui::Button("Queue", ImVec2(110, 0))) {
+            queueOpen_ = true;
+            focusQueue_ = true;
+            placeQueue_ = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Search", ImVec2(110, 0))) {
+            searchOpen_ = true;
+            focusSearch_ = true;
+            placeSearch_ = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Playlists", ImVec2(110, 0))) {
+            playlistsOpen_ = true;
+            focusPlaylists_ = true;
+            placePlaylists_ = true;
+            fetchLibrary(LibMode::PLAYLISTS, 0, "", "");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Settings", ImVec2(110, 0))) {
+            openSettings();
+        }
     }
     if (!player_.state().connected && !connectFailed_) {
-        ImGui::SameLine();
-        ImGui::Text("Connecting...");
+        centerText("Connecting...");
     }
     if (connectFailed_) {
-        ImGui::SameLine();
-        ImGui::Text("Connect failed.");
-        ImGui::SameLine();
-        if (ImGui::Button("Retry")) {
+        centerText("Connect failed.");
+        centerX(80.0f);
+        if (ImGui::Button("Retry", ImVec2(80, 0))) {
             connectStarted_ = false;
             connectFailed_ = false;
             error_.clear();
         }
     }
 
-    // 3+7. Current track + small artwork.
+    // Currently playing information: large artwork, centered text.
     if (artTex_) {
-        ImGui::Image(reinterpret_cast<ImTextureID>(artTex_), ImVec2(64, 64));
-        ImGui::SameLine();
+        centerX(192.0f);
+        ImGui::Image(reinterpret_cast<ImTextureID>(artTex_), ImVec2(192, 192));
     }
-    ImGui::BeginGroup();
     if (metaHave_) {
-        ImGui::Text("%s", meta_.title.c_str());
-        ImGui::Text("%s - %s", meta_.artist.c_str(), meta_.album.c_str());
+        centerText(meta_.title.c_str());
+        const std::string artistLine = meta_.artist + " - " + meta_.album;
+        centerText(artistLine.c_str());
     } else {
-        ImGui::Text("%s", s.currentUri.empty() ? "-" : s.currentUri.c_str());
+        centerText(s.currentUri.empty() ? "-" : s.currentUri.c_str());
     }
     char tbuf[16], dbuf[16];
     const uint32_t durMs = metaHave_ ? meta_.durationMs : 0;
     if (durMs > 0) {
-        ImGui::Text("%s / %s", formatTime(tbuf, sizeof(tbuf), s.positionMs),
-                    formatTime(dbuf, sizeof(dbuf), durMs));
+        const std::string timeLine = std::string(formatTime(tbuf, sizeof(tbuf), s.positionMs)) +
+                                     " / " + formatTime(dbuf, sizeof(dbuf), durMs);
+        centerText(timeLine.c_str());
     } else {
-        ImGui::Text("%s elapsed", formatTime(tbuf, sizeof(tbuf), s.positionMs));
+        const std::string elapsedLine =
+            std::string(formatTime(tbuf, sizeof(tbuf), s.positionMs)) + " elapsed";
+        centerText(elapsedLine.c_str());
     }
-    ImGui::EndGroup();
 
-    // 5. Progress (seek on release). While dragged, the live state must
-    // not overwrite the thumb, or the slider snaps back and never seeks.
+    // Position slider at ~90% of the window width.
     if (durMs > 0) {
         if (!seekHeld_) {
             seekPosSec_ = static_cast<int>(s.positionMs / 1000);
         }
         const int durSec = static_cast<int>(durMs / 1000);
+        ImGui::SetCursorPosX(availX * 0.05f);
+        ImGui::SetNextItemWidth(availX * 0.9f);
         ImGui::SliderInt("##progress", &seekPosSec_, 0, durSec > 0 ? durSec : 1);
         seekHeld_ = ImGui::IsItemActive();
         if (ImGui::IsItemDeactivatedAfterEdit()) {
@@ -601,30 +614,36 @@ void App::frame() {
         }
     }
 
-    // 4. Controls.
-    if (ImGui::Button("<<")) {
-        if (!player_.previous()) {
-            error_ = player_.lastError();
+    // Playback controls: prominent, centered.
+    {
+        const float rowW = 64.0f + 110.0f + 64.0f + spacingX * 2;
+        centerX(rowW);
+        if (ImGui::Button("<<", ImVec2(64, 52))) {
+            if (!player_.previous()) {
+                error_ = player_.lastError();
+            }
         }
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(s.playing ? "Pause##toggle" : "Play##toggle")) {
-        togglePlayPause();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(">>")) {
-        if (!player_.next()) {
-            error_ = player_.lastError();
+        ImGui::SameLine();
+        if (ImGui::Button(s.playing ? "Pause##toggle" : "Play##toggle", ImVec2(110, 52))) {
+            togglePlayPause();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(">>", ImVec2(64, 52))) {
+            if (!player_.next()) {
+                error_ = player_.lastError();
+            }
         }
     }
 
-    // 6. Volume (live).
-    ImGui::SameLine();
-    float vol = s.volume;
-    ImGui::SetNextItemWidth(120);
-    if (ImGui::SliderFloat("Vol", &vol, 0.0f, 1.0f)) {
-        if (!player_.setVolume(vol)) {
-            error_ = player_.lastError();
+    // Volume, centered.
+    {
+        ImGui::SetCursorPosX(availX * 0.25f);
+        ImGui::SetNextItemWidth(availX * 0.5f);
+        float vol = s.volume;
+        if (ImGui::SliderFloat("Vol", &vol, 0.0f, 1.0f)) {
+            if (!player_.setVolume(vol)) {
+                error_ = player_.lastError();
+            }
         }
     }
 
@@ -737,7 +756,7 @@ int App::run() {
     wc.lpszClassName = L"spotilite";
     ::RegisterClassExW(&wc);
     HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"spotilite", WS_OVERLAPPEDWINDOW, 100, 100,
-                               560, 460, nullptr, nullptr, wc.hInstance, nullptr);
+                               560, 540, nullptr, nullptr, wc.hInstance, nullptr);
     if (!CreateDeviceD3D(hwnd)) {
         CleanupDeviceD3D();
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
