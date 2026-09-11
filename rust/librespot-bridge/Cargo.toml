@@ -26,3 +26,5 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "bmp"]
 librespot-oauth = { git = "https://github.com/librespot-org/librespot", rev = "a1b66d3c8a14e55a9572a9e17467150dca618c9a" }
 reqwest = "0.12"
 serde_json = "1"
+# Phase 11 configuration: minimal TOML parser for spotilite.toml.
+toml = "0.8"

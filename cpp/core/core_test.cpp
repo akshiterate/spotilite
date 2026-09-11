@@ -93,6 +93,11 @@ void watch(spotilite::Player& player, int seconds, const char* label) {
 int main(int argc, char** argv) {
     std::cout << "spotilite core test\n";
 
+    char cfgBuf[512];
+    if (spotify_config_summary(cfgBuf, sizeof(cfgBuf)) == SPOTIFY_OK) {
+        std::cout << "config: " << cfgBuf << "\n";
+    }
+
     spotilite::Player player;
     std::cout << "ok: core player created\n";
 

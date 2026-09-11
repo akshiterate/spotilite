@@ -27,7 +27,7 @@ use librespot::{
     metadata::{Episode, Metadata, Track},
     playback::{
         audio_backend,
-        config::{AudioFormat, PlayerConfig},
+        config::{AudioFormat, Bitrate, PlayerConfig},
         mixer::{self, Mixer, MixerConfig},
         player::{Player, PlayerEvent, PlayerEventChannel},
     },
@@ -139,6 +139,110 @@ pub fn bridge_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+// ---- spotilite.toml configuration (Phase 11) ----
+
+/// Effective configuration. Every field has a default; the file is
+/// optional and only keys that parse with the right type take effect.
+pub struct BridgeConfig {
+    pub device_name: String,
+    pub bitrate: u32,
+    pub normalisation: bool,
+    pub volume: f32,
+    pub cache_size_mb: u64,
+}
+
+impl Default for BridgeConfig {
+    fn default() -> Self {
+        Self {
+            device_name: "spotilite".to_owned(),
+            bitrate: 160,
+            normalisation: true,
+            volume: 0.5,
+            cache_size_mb: 1024,
+        }
+    }
+}
+
+pub fn config_path() -> PathBuf {
+    let mut dir = cache_dir();
+    dir.pop(); // strip "cache"
+    dir.join("spotilite.toml")
+}
+
+const DEFAULT_CONFIG_TOML: &str = "# spotilite configuration - edit values, then restart the app.\n\
+    # Only implemented keys take effect; unknown keys are ignored.\n\
+    device_name = \"spotilite\"\n\
+    bitrate = 160\n\
+    normalisation = true\n\
+    volume = 0.5\n\
+    cache_size_mb = 1024\n";
+
+fn str_key(value: &toml::Value, key: &str, fallback: &str) -> String {
+    value
+        .get(key)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or(fallback)
+        .to_owned()
+}
+
+fn int_key(value: &toml::Value, key: &str, fallback: i64) -> i64 {
+    value.get(key).and_then(|v| v.as_integer()).unwrap_or(fallback)
+}
+
+fn bool_key(value: &toml::Value, key: &str, fallback: bool) -> bool {
+    value.get(key).and_then(|v| v.as_bool()).unwrap_or(fallback)
+}
+
+fn float_key(value: &toml::Value, key: &str, fallback: f64) -> f64 {
+    value
+        .get(key)
+        .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
+        .unwrap_or(fallback)
+}
+
+/// Read `%LOCALAPPDATA%\\spotilite\\spotilite.toml` (writing defaults on
+/// first run). Never fails: bad content falls back per key with a warning.
+pub fn load_config() -> BridgeConfig {
+    let path = config_path();
+    if !path.exists() {
+        let _ = std::fs::write(&path, DEFAULT_CONFIG_TOML);
+        return BridgeConfig::default();
+    }
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    let value: toml::Value = text.parse().unwrap_or(toml::Value::Table(Default::default()));
+    let bitrate = match int_key(&value, "bitrate", 160) {
+        96 => 96,
+        320 => 320,
+        160 => 160,
+        other => {
+            log::warn!("config: ignoring unsupported bitrate {other}, using 160");
+            160
+        }
+    };
+    BridgeConfig {
+        device_name: str_key(&value, "device_name", "spotilite"),
+        bitrate,
+        normalisation: bool_key(&value, "normalisation", true),
+        volume: float_key(&value, "volume", 0.5).clamp(0.0, 1.0) as f32,
+        cache_size_mb: int_key(&value, "cache_size_mb", 1024).max(64) as u64,
+    }
+}
+
+/// One-line effective configuration for tests and diagnostics.
+pub fn config_summary() -> String {
+    let cfg = load_config();
+    format!(
+        "device_name={} bitrate={} normalisation={} volume={:.2} cache_size_mb={} path={}",
+        cfg.device_name,
+        cfg.bitrate,
+        cfg.normalisation,
+        cfg.volume,
+        cfg.cache_size_mb,
+        config_path().display()
+    )
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
     let build = || -> Result<*mut SpotifyPlayer, String> {
@@ -150,14 +254,16 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
 
         let dir = cache_dir();
         let id = device_id(&dir).map_err(|e| format!("device id: {e}"))?;
+        let cfg = load_config();
+        let cache_bytes = cfg.cache_size_mb.saturating_mul(1024 * 1024);
         let files_dir = dir.join("files");
         let cache =
-            Cache::new(Some(&dir), Some(&dir), Some(&files_dir), None).map_err(|e| format!("cache: {e}"))?;
+            Cache::new(Some(&dir), Some(&dir), Some(&files_dir), Some(cache_bytes)).map_err(|e| format!("cache: {e}"))?;
         // Session takes ownership of a Cache; a second instance over the
         // same paths is cheap (directory creation is idempotent) and keeps
         // credential reads available on the handle.
         let session_cache =
-            Cache::new(Some(&dir), Some(&dir), Some(&files_dir), None).map_err(|e| format!("cache: {e}"))?;
+            Cache::new(Some(&dir), Some(&dir), Some(&files_dir), Some(cache_bytes)).map_err(|e| format!("cache: {e}"))?;
 
         let mut session_config = SessionConfig::default();
         session_config.device_id = id;
@@ -165,6 +271,7 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
         let mixer = mixer::find(None)
             .ok_or_else(|| "no mixer backend".to_owned())?(MixerConfig::default())
             .map_err(|e| format!("mixer: {e}"))?;
+        mixer.set_volume((cfg.volume.clamp(0.0, 1.0) * u16::MAX as f32).round() as u16);
         let sink_builder =
             audio_backend::find(None).ok_or_else(|| "no audio backend".to_owned())?;
         let audio_format = AudioFormat::default();
@@ -177,6 +284,12 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
             let mut player_config = PlayerConfig::default();
             player_config.position_update_interval =
                 Some(std::time::Duration::from_millis(1000));
+            player_config.bitrate = match cfg.bitrate {
+                96 => Bitrate::Bitrate96,
+                320 => Bitrate::Bitrate320,
+                _ => Bitrate::Bitrate160,
+            };
+            player_config.normalisation = cfg.normalisation;
             let player = Player::new(
                 player_config,
                 session.clone(),
@@ -1873,6 +1986,23 @@ pub unsafe extern "C" fn spotify_get_volume(
     // SAFETY: null-checked above; caller provides storage.
     unsafe {
         *out = raw as c_float / u16::MAX as c_float;
+    }
+    SPOTIFY_OK
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_config_summary(out: *mut c_char, cap: std::os::raw::c_int) -> std::os::raw::c_int {
+    if out.is_null() || cap <= 0 {
+        return SPOTIFY_ERR_NULL_ARG;
+    }
+    let text = config_summary();
+    if text.len() + 1 > cap as usize {
+        return SPOTIFY_ERR_INTERNAL;
+    }
+    // SAFETY: bounds-checked above; caller provides `cap` bytes.
+    unsafe {
+        std::ptr::copy_nonoverlapping(text.as_ptr() as *const c_char, out, text.len());
+        *out.add(text.len()) = 0;
     }
     SPOTIFY_OK
 }

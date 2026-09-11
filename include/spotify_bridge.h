@@ -224,6 +224,9 @@ int spotify_artist_tracks(SpotifyPlayer* player, const char* artist,
 // Never NULL. Pass NULL to read a creation-time failure.
 const char* spotify_last_error(const SpotifyPlayer* player);
 
+// One-line effective configuration (spotilite.toml) for diagnostics.
+int spotify_config_summary(char* out, int cap);
+
 #ifdef __cplusplus
 }
 #endif

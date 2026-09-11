@@ -19,8 +19,9 @@ void App::drawSettingsWindow() {
         ImGui::End();
         return;
     }
-    ImGui::Text("No settings yet.");
-    ImGui::Text("Configuration arrives in Phase 11.");
+    ImGui::Text("Edit %LOCALAPPDATA%\\spotilite\\spotilite.toml,");
+    ImGui::Text("then restart. Device name, bitrate, normalisation,");
+    ImGui::Text("startup volume and audio cache size apply on launch.");
     ImGui::End();
 }
 

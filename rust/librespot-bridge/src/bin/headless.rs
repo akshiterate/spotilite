@@ -12,6 +12,7 @@
 use std::path::PathBuf;
 
 use futures_util::StreamExt as _;
+use librespot_bridge::load_config;
 use librespot::{
     connect::{ConnectConfig, Spirc},
     core::{
@@ -29,7 +30,6 @@ use librespot::{
     },
 };
 
-const DEVICE_NAME: &str = "spotilite";
 const DEVICE_ID_FILE: &str = "device-id";
 
 fn cache_dir() -> PathBuf {
@@ -64,10 +64,16 @@ async fn main() -> Result<(), Error> {
 
     println!("spotilite headless receiver (Phase 1 playback proof)");
 
+    let cfg = load_config();
     let dir = cache_dir();
     let id = device_id(&dir)?;
     let files_dir = dir.join("files");
-    let cache = Cache::new(Some(&dir), Some(&dir), Some(&files_dir), None)?;
+    let cache = Cache::new(
+        Some(&dir),
+        Some(&dir),
+        Some(&files_dir),
+        Some(cfg.cache_size_mb.saturating_mul(1024 * 1024)),
+    )?;
 
     let mut session_config = SessionConfig::default();
     session_config.device_id = id.clone();
@@ -78,10 +84,13 @@ async fn main() -> Result<(), Error> {
             credentials
         }
         None => {
-            println!("Advertising as \"{DEVICE_NAME}\" ...");
-            println!("In the Spotify app: Connect to a device -> {DEVICE_NAME}.");
+            println!("Advertising as \"{}\" ...", cfg.device_name);
+            println!(
+                "In the Spotify app: Connect to a device -> {}.",
+                cfg.device_name
+            );
             let mut discovery = Discovery::builder(id, session_config.client_id.clone())
-                .name(DEVICE_NAME)
+                .name(cfg.device_name.clone())
                 .device_type(DeviceType::Computer)
                 .launch()?;
             let credentials = discovery.next().await.ok_or_else(|| {
@@ -96,12 +105,22 @@ async fn main() -> Result<(), Error> {
 
     let mixer = mixer::find(None)
         .ok_or_else(|| Error::unavailable("no mixer backend"))?(MixerConfig::default())?;
+    mixer.set_volume((cfg.volume.clamp(0.0, 1.0) * u16::MAX as f32).round() as u16);
     let sink_builder =
         audio_backend::find(None).ok_or_else(|| Error::unavailable("no audio backend"))?;
     let audio_format = AudioFormat::default();
 
+    use librespot::playback::config::Bitrate;
+
+    let mut player_config = PlayerConfig::default();
+    player_config.bitrate = match cfg.bitrate {
+        96 => Bitrate::Bitrate96,
+        320 => Bitrate::Bitrate320,
+        _ => Bitrate::Bitrate160,
+    };
+    player_config.normalisation = cfg.normalisation;
     let player = Player::new(
-        PlayerConfig::default(),
+        player_config,
         session.clone(),
         mixer.get_soft_volume(),
         move || sink_builder(None, audio_format),
@@ -111,7 +130,7 @@ async fn main() -> Result<(), Error> {
     // No auto-activate: launching must not hijack playback that is already
     // playing elsewhere; the user transfers playback explicitly.
     let mut connect_config = ConnectConfig::default();
-    connect_config.name = DEVICE_NAME.to_owned();
+    connect_config.name = cfg.device_name.clone();
 
     let (_spirc, spirc_task) = Spirc::new(
         connect_config,
