@@ -147,13 +147,18 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
             audio_backend::find(None).ok_or_else(|| "no audio backend".to_owned())?;
         let audio_format = AudioFormat::default();
 
-        let session = Session::new(session_config, Some(session_cache));
-        let player = Player::new(
-            PlayerConfig::default(),
-            session.clone(),
-            mixer.get_soft_volume(),
-            move || sink_builder(None, audio_format),
-        );
+        // Session::new (and Player::new) require a Tokio runtime context:
+        // they spawn background tasks via tokio primitives at construction.
+        let (session, player) = rt.block_on(async {
+            let session = Session::new(session_config, Some(session_cache));
+            let player = Player::new(
+                PlayerConfig::default(),
+                session.clone(),
+                mixer.get_soft_volume(),
+                move || sink_builder(None, audio_format),
+            );
+            (session, player)
+        });
 
         let handle = SpotifyPlayer {
             rt,
