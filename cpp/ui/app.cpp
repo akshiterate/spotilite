@@ -1,6 +1,6 @@
 // App shell + entry point. Build (no CMake change — direct link):
-//   g++ -std=c++17 cpp/ui/app.cpp cpp/ui/main_window.cpp
-//       cpp/ui/queue_window.cpp cpp/ui/search_window.cpp cpp/core/player.cpp
+//   g++ -std=c++17 cpp/ui/app.cpp cpp/ui/queue_window.cpp
+//       cpp/ui/search_window.cpp cpp/core/player.cpp
 //       third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
 //       third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
 //       third_party/imgui/backends/imgui_impl_win32.cpp
