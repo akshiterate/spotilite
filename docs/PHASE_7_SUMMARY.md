@@ -1,10 +1,6 @@
 # Phase 7 Summary — Minimal GUI
 
-> MID-PHASE CHECKPOINT (not the final Phase 7 report).
-> GUI implemented, linked, smoke-tested (14s alive, no crash, no errors).
-> Awaiting USER manual test (required by the plan): launch, play, pause,
-> skip, seek, volume, metadata + artwork visible. Finalize + `PHASE 7
-> COMPLETE` after that confirmation.
+Final report. User manual test passed (see Verified).
 
 ## Goal
 
@@ -19,7 +15,7 @@ volume, small artwork (plans.md Phase 7). Dear ImGui, sparse, core-only.
   over the core `Player`. Win32 window + DirectX 11 (system libs only —
   no windowing dependency). Single `spotilite` window:
   - URI input + Play button (real search is Phase 8; see deviations).
-  - Queue listbox (click select, double... `Play selected` button).
+  - Queue listbox (click select + `Play selected` button).
   - Current: 64px artwork (BMP→DX11 texture on ARTWORK_READY) + title /
     artist-album from async metadata fetch (applied only if still
     current) + elapsed/total + state + volume% + queue count.
@@ -41,15 +37,14 @@ volume, small artwork (plans.md Phase 7). Dear ImGui, sparse, core-only.
 
 ## Verified
 
-- `g++` link exit 0. `build/gui.exe` launched headless here: alive 14s
-  (incl. blocking auto-connect), no crash, empty stdout/stderr, killed
-  cleanly. No interaction possible from here — manual test required.
-- `cmake --build build --config Release` still green (deferred to close).
-
-## NOT yet verified (requires user)
-
-Launch, playback state shown, play/pause, skip, seek, volume, metadata +
-artwork displayed. Steps in "How to test now".
+- `g++` link exit 0. `build/gui.exe` smoke here: alive 14s (incl.
+  blocking auto-connect), no crash, empty stdout/stderr.
+- USER manual test (required by plan): launch, playback state, play/pause,
+  skip, seek, volume, metadata + artwork — user confirmed working ("yes").
+- `cmake --build build --config Release` exit 0 (rerun at close).
+- `git status` clean; scope respected (`third_party` vendor,
+  `cpp/ui/**`, one `Queue::at` accessor, `docs/`; TUI/CMakeLists
+  untouched).
 
 ## How to test now
 
@@ -57,10 +52,9 @@ artwork displayed. Steps in "How to test now".
 2. Relink GUI with the `g++` line in `cpp/ui/gui.cpp` header comment.
 3. Run `build/gui.exe`. Paste a `spotify:track:...` URI, press Play.
 4. Check: metadata + 64px artwork appear, progress advances, Play/Pause
-   toggles, << / >> skip (after adding URIs via queue... note: queue is
-   populated by played URIs — load 2 URIs, select in list, Play
-   selected), seek slider jumps, Vol slider changes volume.
-5. Report: what works / screenshots of anything wrong / exact error text.
+   toggles, << / >> skip, seek slider jumps, Vol slider changes volume.
+
+Expected: all of the above (user-verified).
 
 ## librespot rev
 
@@ -70,5 +64,6 @@ Unchanged: `a1b66d3c`, defaults. No manifest change.
 
 - `phase-7: vendor Dear ImGui v1.92.9b`
 - `phase-7: add minimal GUI`
-- `phase-7: checkpoint docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
-- Pushed to `origin/main`.
+- `phase-7: checkpoint docs`
+- `phase-7: finalize docs` (this file)
+- All pushed to `origin/main` at phase completion.
