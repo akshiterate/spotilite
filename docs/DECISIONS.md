@@ -226,6 +226,11 @@ Append-only log: date, decision, why, alternatives rejected.
   list shifted underneath it). Alt-Tab (or any focus loss to a foreign
   window) closes utility windows via WM_ACTIVATE + own-HWND check, per
   explicit user request; focus moving between our own windows is ignored.
+- 2026-09-11 (UI feedback round 3): queue shows row 0 = now playing
+  (move target and delete exclude it; Play Selected on it replays);
+  selection mapping is index-based so labels always match. Playlist,
+  album and artist content windows page to completion (cap 500) instead
+  of the first 50.
 - 2026-09-11 (UI feedback round): queue rows show `title - artist` via a
   background name cache (`spotify_metadata_for_uri`, 200-entry cap, URIs
   until names land). Secondary windows auto-height (fixed widths kept);

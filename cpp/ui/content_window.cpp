@@ -49,7 +49,31 @@ void App::openContent(const std::string& key, const std::string& title, bool isL
                 }
             }
         } else {
-            ok = player_.playlistTracks(key, 50, 0, out.first, total);
+            // Playlists/albums/artists: page until an empty page (cap 500).
+            // Playlist/artist totals are unknown (-1); albums report real
+            // totals, which just ends the loop sooner.
+            ok = true;
+            int offset = 0;
+            int knownTotal = -1;
+            while (ok && static_cast<int>(out.first.size()) < 500 &&
+                   (knownTotal < 0 || offset < knownTotal)) {
+                std::vector<SearchResult> page;
+                int pageTotal = -1;
+                if (key.rfind("spotify:album:", 0) == 0) {
+                    ok = player_.albumTracks(key, 50, offset, page, pageTotal);
+                } else if (key.rfind("spotify:artist:", 0) == 0) {
+                    ok = player_.artistTracks(key, 50, offset, page, pageTotal);
+                } else {
+                    ok = player_.playlistTracks(key, 50, offset, page, pageTotal);
+                }
+                if (!ok || page.empty()) {
+                    break;
+                }
+                knownTotal = pageTotal;
+                total = pageTotal;
+                offset += static_cast<int>(page.size());
+                out.first.insert(out.first.end(), page.begin(), page.end());
+            }
         }
         if (!ok) {
             out.second = player_.lastError();

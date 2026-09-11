@@ -83,13 +83,16 @@ void App::drawQueueWindow() {
     }
     Queue& queue = player_.queue();
     ensureNames();
-    ImGui::Text("Now: %s", player_.state().currentUri.empty()
-                                ? "-"
-                                : trackLabel(player_.state().currentUri).c_str());
-
-    const std::size_t base = queue.empty() ? 0 : queue.index() + 1;
+    // Row 0 is the now-playing track; 1..N is the upcoming queue. Position
+    // 0 is display-only for moves (nothing is before it to move to), but
+    // Play Selected on it replays the current track.
+    const bool hasCurrent = !queue.empty();
+    const std::size_t base = hasCurrent ? queue.index() + 1 : 0;
     const std::size_t upcoming = queue.size() > base ? queue.size() - base : 0;
     std::vector<std::string> labels;
+    if (hasCurrent) {
+        labels.push_back("0. " + trackLabel(queue.current()));
+    }
     for (std::size_t i = 0; i < upcoming; ++i) {
         labels.push_back(std::to_string(i + 1) + ". " + trackLabel(queue.at(base + i)));
     }
@@ -105,7 +108,8 @@ void App::drawQueueWindow() {
     }
     ImGui::ListBox("##upcoming", &queueUpSel_, rows.data(), static_cast<int>(rows.size()),
                    8);
-    const std::size_t globalSel = base + (queueUpSel_ < 0 ? 0 : static_cast<std::size_t>(queueUpSel_));
+    const std::size_t globalSel =
+        queue.index() + (queueUpSel_ < 0 ? 0 : static_cast<std::size_t>(queueUpSel_));
 
     if (ImGui::Button("Play Selected")) {
         if (globalSel >= queue.size()) {
@@ -118,7 +122,11 @@ void App::drawQueueWindow() {
     }
     ImGui::SameLine();
     if (ImGui::Button("Delete")) {
-        if (globalSel >= queue.size() || !queue.removeAt(globalSel)) {
+        if (globalSel >= queue.size()) {
+            error_ = "nothing to delete";
+        } else if (globalSel == queue.index()) {
+            error_ = "can't delete the playing track";
+        } else if (!queue.removeAt(globalSel)) {
             error_ = "nothing to delete";
         } else {
             error_.clear();
@@ -137,7 +145,7 @@ void App::drawQueueWindow() {
         } else {
             const std::size_t target = base + static_cast<std::size_t>(want - 1);
             if (queue.move(globalSel, target)) {
-                queueUpSel_ = want - 1;
+                queueUpSel_ = want;  // list position (row 0 is current)
                 error_.clear();
             } else {
                 error_ = "move failed";
