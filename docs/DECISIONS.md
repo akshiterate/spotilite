@@ -86,3 +86,13 @@ Append-only log: date, decision, why, alternatives rejected.
   (dangling pointer), errno-style codes without text (undebuggable from
   C++). Connect failures split AUTH vs INTERNAL via `AuthenticationError`
   downcast (`Error.error` is pub).
+- 2026-09-11 (Phase 2): `Session::new`/`Player::new` must run inside the
+  Tokio runtime context (self-test panic: "no reactor running" at
+  `session.rs:159`), so `spotify_create` builds them under `rt.block_on`.
+  Rejected: `rt.enter()` guard (block_on is simpler and creation is
+  one-shot).
+- 2026-09-11 (Phase 2): `bridge_test` links the staticlib with direct
+  `g++`, no CMake change (`CMakeLists.txt` outside Phase 2 scope, 1.15).
+  Extra system libs required beyond the obvious: `ole32 oleaut32 propsys
+  ntdll` (cpal/rodio COM + prop-variant + `NtCreateNamedPipeFile`). Test
+  exe goes to `build/` (gitignored) to keep artifacts in one place.
