@@ -612,7 +612,7 @@ int App::run() {
     wc.lpszClassName = L"spotilite";
     ::RegisterClassExW(&wc);
     HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"spotilite", WS_OVERLAPPEDWINDOW, 100, 100,
-                               660, 900, nullptr, nullptr, wc.hInstance, nullptr);
+                               560, 460, nullptr, nullptr, wc.hInstance, nullptr);
     if (!CreateDeviceD3D(hwnd)) {
         CleanupDeviceD3D();
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);

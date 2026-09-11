@@ -74,7 +74,7 @@ void App::drawQueueWindow() {
         focusQueue_ = false;
     }
     if (placeQueue_) {
-        placeMe("queue", ImVec2(360, 0), 0);
+        placeMe("queue", ImVec2(470, 0), 0);
         placeQueue_ = false;
     }
     if (!ImGui::Begin("Queue", &queueOpen_)) {
@@ -107,7 +107,7 @@ void App::drawQueueWindow() {
         queueUpSel_ = 0;
     }
     ImGui::ListBox("##upcoming", &queueUpSel_, rows.data(), static_cast<int>(rows.size()),
-                   8);
+                   10);
     const std::size_t globalSel =
         queue.index() + (queueUpSel_ < 0 ? 0 : static_cast<std::size_t>(queueUpSel_));
 

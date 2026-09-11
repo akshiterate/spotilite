@@ -15,7 +15,7 @@ void App::drawSearchWindow() {
         focusSearch_ = false;
     }
     if (placeSearch_) {
-        placeMe("search", ImVec2(480, 0), 0);
+        placeMe("search", ImVec2(560, 0), 0);
         placeSearch_ = false;
     }
     if (!ImGui::Begin("Search", &searchOpen_)) {
@@ -51,7 +51,7 @@ void App::drawSearchWindow() {
         searchSel_ = 0;
     }
     ImGui::ListBox("##results", &searchSel_, found.data(), static_cast<int>(found.size()),
-                   8);
+                   10);
     ImGui::SameLine();
     if (ImGui::Button("Play result")) {
         playSearchResult();

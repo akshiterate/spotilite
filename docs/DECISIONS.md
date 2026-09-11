@@ -231,6 +231,12 @@ Append-only log: date, decision, why, alternatives rejected.
   selection mapping is index-based so labels always match. Playlist,
   album and artist content windows page to completion (cap 500) instead
   of the first 50.
+- 2026-09-11 (UI feedback round 4): sizing pass — main OS window 660x900
+  → 560x460; sub windows widened (queue 470, search/content 560,
+  playlists 500) with more visible rows (8/8/10 → 10/10/12); heights stay
+  auto. Play Selected "random song" reports traced to stale binaries +
+  selection going stale at track boundaries (both fixed); core ordering
+  proven by test.
 - 2026-09-11 (UI feedback round): queue rows show `title - artist` via a
   background name cache (`spotify_metadata_for_uri`, 200-entry cap, URIs
   until names land). Secondary windows auto-height (fixed widths kept);

@@ -95,7 +95,7 @@ void App::drawContentWindows() {
             it->focusMe = false;
         }
         if (it->placeMe) {
-            placeMe("content", ImVec2(460, 0), cascade);
+            placeMe("content", ImVec2(560, 0), cascade);
             it->placeMe = false;
         }
         ++cascade;

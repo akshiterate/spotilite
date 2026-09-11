@@ -16,7 +16,7 @@ void App::drawPlaylistsWindow() {
         focusPlaylists_ = false;
     }
     if (placePlaylists_) {
-        placeMe("playlists", ImVec2(420, 0), 0);
+        placeMe("playlists", ImVec2(500, 0), 0);
         placePlaylists_ = false;
     }
     if (!ImGui::Begin("Playlists", &playlistsOpen_)) {
@@ -42,7 +42,7 @@ void App::drawPlaylistsWindow() {
         libSel_ = 0;
     }
     ImGui::ListBox("##playlists", &libSel_, libRows.data(), static_cast<int>(libRows.size()),
-                   10);
+                   12);
     if (ImGui::Button("<##pl") && libPage_ > 0) {
         fetchLibrary(LibMode::PLAYLISTS, libPage_ - 1, "", "");
     }
