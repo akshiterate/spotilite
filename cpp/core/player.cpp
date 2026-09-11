@@ -88,6 +88,28 @@ bool Player::metadata(TrackMetadata& out) {
     return true;
 }
 
+bool Player::search(const std::string& query, int types, int limit, int offset,
+                    std::vector<SearchResult>& out) {
+    out.clear();
+    SpotifySearchItem buf[50];
+    const int n = spotify_search(handle_, query.c_str(), types, limit, offset, buf,
+                                 static_cast<int>(sizeof(buf) / sizeof(buf[0])));
+    if (n < 0) {
+        lastError_ = spotify_last_error(handle_);
+        return false;
+    }
+    for (int i = 0; i < n; ++i) {
+        SearchResult item;
+        item.kind = buf[i].kind;
+        item.uri = buf[i].uri;
+        item.name = buf[i].name;
+        item.subtitle = buf[i].subtitle;
+        item.durationMs = buf[i].duration_ms;
+        out.push_back(item);
+    }
+    return true;
+}
+
 bool Player::requestArtwork(const std::string& uri) {
     return callOk(spotify_request_artwork(handle_, uri.c_str()));
 }

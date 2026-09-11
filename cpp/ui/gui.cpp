@@ -263,6 +263,42 @@ bool Gui::playSelected() {
     return player_.loadUri(player_.queue().current());
 }
 
+void Gui::pollSearch() {
+    if (!pendingSearch_.active) {
+        return;
+    }
+    if (pendingSearch_.future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return;
+    }
+    pendingSearch_.active = false;
+    auto [results, error] = pendingSearch_.future.get();
+    if (!error.empty() && results.empty()) {
+        error_ = error;
+        searchResults_.clear();
+        return;
+    }
+    searchResults_ = std::move(results);
+    searchSel_ = 0;
+    error_.clear();
+}
+
+bool Gui::playSearchResult() {
+    if (searchSel_ < 0 || static_cast<std::size_t>(searchSel_) >= searchResults_.size()) {
+        return false;
+    }
+    const SearchResult& item = searchResults_[static_cast<std::size_t>(searchSel_)];
+    if (item.kind != SEARCH_TRACK) {
+        error_ = "only tracks can be played yet";
+        return false;
+    }
+    if (!player_.loadUri(item.uri)) {
+        error_ = player_.lastError();
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
 void Gui::frame() {
     // Events drive state; artwork texture follows READY events.
     PlayerEvent event;
@@ -310,6 +346,41 @@ void Gui::frame() {
     ImGui::SameLine();
     if (ImGui::Button("Play selected") && !playSelected()) {
         error_ = player_.lastError();
+    }
+
+    // 8. Web API search + results (tracks playable, other rows display).
+    ImGui::InputText("Search", searchBuf_, sizeof(searchBuf_));
+    ImGui::SameLine();
+    if (ImGui::Button("Find") && searchBuf_[0] != '\0') {
+        pendingSearch_.active = true;
+        const std::string query = searchBuf_;
+        pendingSearch_.future = std::async(std::launch::async, [this, query] {
+            std::pair<std::vector<SearchResult>, std::string> out;
+            if (!player_.search(query, SEARCH_ANY, 20, 0, out.first)) {
+                out.second = player_.lastError();
+            }
+            return out;
+        });
+    }
+    pollSearch();
+    std::vector<std::string> foundText;
+    for (const auto& r : searchResults_) {
+        foundText.push_back(r.subtitle.empty() ? r.name : r.name + " - " + r.subtitle);
+    }
+    std::vector<const char*> found;
+    for (const auto& t : foundText) {
+        found.push_back(t.c_str());
+    }
+    if (searchSel_ >= static_cast<int>(found.size())) {
+        searchSel_ = static_cast<int>(found.size()) - 1;
+    }
+    if (searchSel_ < 0 && !found.empty()) {
+        searchSel_ = 0;
+    }
+    ImGui::ListBox("##results", &searchSel_, found.data(), static_cast<int>(found.size()), 6);
+    ImGui::SameLine();
+    if (ImGui::Button("Play result")) {
+        playSearchResult();
     }
 
     // 3+7. Current track + small artwork.
@@ -401,7 +472,7 @@ int Gui::run() {
     wc.lpszClassName = L"spotilite";
     ::RegisterClassExW(&wc);
     HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"spotilite", WS_OVERLAPPEDWINDOW, 100, 100,
-                               640, 560, nullptr, nullptr, wc.hInstance, nullptr);
+                               660, 720, nullptr, nullptr, wc.hInstance, nullptr);
     if (!CreateDeviceD3D(hwnd)) {
         CleanupDeviceD3D();
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);

@@ -5,6 +5,7 @@
 // it also plays/pauses/resumes/seeks with event polling. Exit 0 on success.
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -100,6 +101,33 @@ int main(int argc, char** argv) {
 
     // Error path: garbage URI must fail without touching state.
     check(!player.loadUri("garbage"), "garbage uri rejected", player.lastError());
+
+    // Search: without a login (no env, no cached token) expect a clean AUTH
+    // error naming SPOTILITE_CLIENT_ID; with a login expect real rows.
+    {
+        const char* localAppData = std::getenv("LOCALAPPDATA");
+        const std::string webCache =
+            (localAppData ? localAppData : "") + std::string("\\spotilite\\cache\\webapi.json");
+        const bool haveLogin = std::getenv("SPOTILITE_CLIENT_ID") != nullptr ||
+                               std::ifstream(webCache).good();
+        std::vector<spotilite::SearchResult> results;
+        const bool ok = player.search("radiohead", spotilite::SEARCH_ANY, 5, 0, results);
+        if (haveLogin) {
+            check(ok, "search radiohead", player.lastError());
+            if (ok) {
+                check(!results.empty(), "search returned rows");
+                for (const auto& r : results) {
+                    std::cout << "result: [" << r.kind << "] " << r.name;
+                    if (!r.subtitle.empty()) {
+                        std::cout << " - " << r.subtitle;
+                    }
+                    std::cout << " <" << r.uri << ">\n";
+                }
+            }
+        } else {
+            check(!ok, "search without login fails clean", player.lastError());
+        }
+    }
 
     if (argc > 1) {
         const std::string uri = argv[1];

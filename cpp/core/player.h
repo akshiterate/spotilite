@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "queue.h"
 #include "spotify_bridge.h"
@@ -35,6 +36,23 @@ struct TrackMetadata {
     std::string trackId;
 };
 
+enum SearchKind {
+    SEARCH_TRACK = 1,
+    SEARCH_ARTIST = 2,
+    SEARCH_ALBUM = 3,
+    SEARCH_PLAYLIST = 4,
+    // ALL is taken by a Windows SDK macro; ANY means the same bitmask.
+    SEARCH_ANY = 15
+};
+
+struct SearchResult {
+    int kind = 0;
+    std::string uri;
+    std::string name;
+    std::string subtitle;
+    uint32_t durationMs = 0;
+};
+
 class Player {
 public:
     // Throws std::runtime_error if the Rust player cannot be created.
@@ -52,6 +70,9 @@ public:
     bool seek(uint32_t positionMs);
     bool setVolume(float volume);  // 0.0..1.0, clamped by the bridge
     bool metadata(TrackMetadata& out);  // fetch for last loaded URI
+    // Web API search (blocking network). Types bitmask of SearchKind.
+    bool search(const std::string& query, int types, int limit, int offset,
+                std::vector<SearchResult>& out);
     bool requestArtwork(const std::string& uri);  // background fetch, idempotent
     bool artworkReady(const std::string& uri, int size);  // cached? size: 128/256
     std::string artworkPath(const std::string& uri, int size);  // "" on failure
