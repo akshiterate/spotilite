@@ -1243,6 +1243,8 @@ pub unsafe extern "C" fn spotify_search(
     if mask & SPOTIFY_SEARCH_PLAYLIST != 0 {
         push_playlists(&mut raw, &value);
     }
+    // Spotify sometimes returns null entries; drop rows without a URI.
+    raw.retain(|item| !item.uri.is_empty());
     let count = raw.len().min(cap as usize);
     // SAFETY: null- and bounds-checked above; caller provides `cap` slots.
     let dest = unsafe { std::slice::from_raw_parts_mut(items, cap as usize) };
