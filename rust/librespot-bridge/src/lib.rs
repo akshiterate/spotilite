@@ -23,6 +23,7 @@ use librespot::{
         authentication::AuthenticationError, cache::Cache, config::SessionConfig,
         session::Session, SpotifyUri,
     },
+    metadata::{Episode, Metadata, Track},
     playback::{
         audio_backend,
         config::{AudioFormat, PlayerConfig},
@@ -42,6 +43,7 @@ pub struct SpotifyPlayer {
     cache: Cache,
     connected: AtomicBool,
     event_rx: Mutex<PlayerEventChannel>,
+    current_uri: Mutex<String>,
 }
 
 // Last-error text, one buffer per calling thread. The pointer handed out is
@@ -174,6 +176,7 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
             cache,
             connected: AtomicBool::new(false),
             event_rx: Mutex::new(event_rx),
+            current_uri: Mutex::new(String::new()),
         };
         Ok(Box::into_raw(Box::new(handle)))
     };
@@ -273,6 +276,9 @@ pub unsafe extern "C" fn spotify_load_uri(
             SPOTIFY_ERR_BAD_URI,
             format!("uri is not playable audio: {uri}"),
         );
+    }
+    if let Ok(mut slot) = handle.current_uri.lock() {
+        *slot = parsed.to_string();
     }
     handle.player.load(parsed, true, 0);
     SPOTIFY_OK
@@ -479,6 +485,122 @@ pub unsafe extern "C" fn spotify_poll_event(
             }
         }
     }
+}
+
+const SPOTIFY_META_TITLE_MAX: usize = 256;
+const SPOTIFY_META_ARTIST_MAX: usize = 256;
+const SPOTIFY_META_ALBUM_MAX: usize = 256;
+const SPOTIFY_META_URI_MAX: usize = 128;
+const SPOTIFY_META_ID_MAX: usize = 32;
+
+/// C layout twin of `SpotifyMetadata` (field order and types must match).
+#[repr(C)]
+pub struct SpotifyMetadata {
+    pub title: [c_char; SPOTIFY_META_TITLE_MAX],
+    pub artist: [c_char; SPOTIFY_META_ARTIST_MAX],
+    pub album: [c_char; SPOTIFY_META_ALBUM_MAX],
+    pub duration_ms: u32,
+    pub uri: [c_char; SPOTIFY_META_URI_MAX],
+    pub track_id: [c_char; SPOTIFY_META_ID_MAX],
+}
+
+fn fill_slot(slot: &mut [c_char], text: &str) {
+    let bytes = text.as_bytes();
+    let n = bytes.len().min(slot.len() - 1);
+    for (i, byte) in bytes[..n].iter().enumerate() {
+        slot[i] = *byte as c_char;
+    }
+    slot[n] = 0;
+}
+
+struct FetchedMetadata {
+    title: String,
+    artist: String,
+    album: String,
+    duration_ms: u32,
+    track_id: String,
+    uri: String,
+}
+
+// Single metadata fetch: Track carries album + artists inline, so one
+// request covers everything. No Web API.
+async fn fetch_metadata(
+    session: &Session,
+    uri: &SpotifyUri,
+) -> Result<FetchedMetadata, String> {
+    match uri {
+        SpotifyUri::Track { .. } => {
+            let track = Track::get(session, uri)
+                .await
+                .map_err(|e| format!("track metadata: {e}"))?;
+            Ok(FetchedMetadata {
+                title: track.name.clone(),
+                artist: track.artists.0.iter().map(|a| a.name.as_str()).collect::<Vec<_>>().join(", "),
+                album: track.album.name.clone(),
+                duration_ms: track.duration.max(0) as u32,
+                track_id: uri.to_id(),
+                uri: uri.to_string(),
+            })
+        }
+        SpotifyUri::Episode { .. } => {
+            let episode = Episode::get(session, uri)
+                .await
+                .map_err(|e| format!("episode metadata: {e}"))?;
+            Ok(FetchedMetadata {
+                title: episode.name.clone(),
+                artist: String::new(),
+                album: String::new(),
+                duration_ms: episode.duration.max(0) as u32,
+                track_id: uri.to_id(),
+                uri: uri.to_string(),
+            })
+        }
+        _ => Err(format!("not playable audio: {uri}")),
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_current_metadata(
+    player: *mut SpotifyPlayer,
+    out: *mut SpotifyMetadata,
+) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if let Err((code, msg)) = check_connected(handle) {
+        return fail(code, msg);
+    }
+    if out.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null metadata out-pointer".to_owned());
+    }
+    let uri_text = match handle.current_uri.lock() {
+        Ok(guard) => guard.clone(),
+        Err(_) => return fail(SPOTIFY_ERR_INTERNAL, "track lock poisoned".to_owned()),
+    };
+    if uri_text.is_empty() {
+        return fail(
+            SPOTIFY_ERR_NOT_CONNECTED,
+            "no track loaded; call spotify_load_uri() first".to_owned(),
+        );
+    }
+    let uri = match SpotifyUri::from_uri(&uri_text) {
+        Ok(u) => u,
+        Err(e) => return fail(SPOTIFY_ERR_BAD_URI, format!("stored uri invalid: {e}")),
+    };
+    let meta = match handle.rt.block_on(fetch_metadata(&handle.session, &uri)) {
+        Ok(m) => m,
+        Err(msg) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+    };
+    // SAFETY: null-checked above; caller provides storage.
+    let dest = unsafe { &mut *out };
+    fill_slot(&mut dest.title, &meta.title);
+    fill_slot(&mut dest.artist, &meta.artist);
+    fill_slot(&mut dest.album, &meta.album);
+    dest.duration_ms = meta.duration_ms;
+    fill_slot(&mut dest.uri, &meta.uri);
+    fill_slot(&mut dest.track_id, &meta.track_id);
+    SPOTIFY_OK
 }
 
 #[no_mangle]

@@ -26,6 +26,15 @@ struct PlayerEvent {
     std::string uri;
 };
 
+struct TrackMetadata {
+    std::string title;
+    std::string artist;
+    std::string album;
+    uint32_t durationMs = 0;
+    std::string uri;
+    std::string trackId;
+};
+
 class Player {
 public:
     // Throws std::runtime_error if the Rust player cannot be created.
@@ -42,6 +51,7 @@ public:
     bool resume();
     bool seek(uint32_t positionMs);
     bool setVolume(float volume);  // 0.0..1.0, clamped by the bridge
+    bool metadata(TrackMetadata& out);  // fetch for last loaded URI
     bool next();                   // queue forward + load; false at the end
     bool previous();               // queue back + load; false at the start
     void enqueue(const std::string& uri);

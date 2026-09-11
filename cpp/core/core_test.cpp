@@ -82,6 +82,23 @@ int main(int argc, char** argv) {
     if (argc > 1) {
         const std::string uri = argv[1];
         check(player.loadUri(uri), "load uri", player.lastError());
+
+        spotilite::TrackMetadata meta;
+        check(player.metadata(meta), "fetch metadata", player.lastError());
+        std::cout << "metadata:\n"
+                  << "  title: " << meta.title << "\n"
+                  << "  artist: " << meta.artist << "\n"
+                  << "  album: " << meta.album << "\n"
+                  << "  duration_ms: " << meta.durationMs << "\n"
+                  << "  uri: " << meta.uri << "\n"
+                  << "  track_id: " << meta.trackId << "\n";
+        check(!meta.title.empty(), "metadata title non-empty");
+        check(!meta.artist.empty(), "metadata artist non-empty");
+        check(!meta.album.empty(), "metadata album non-empty");
+        check(meta.durationMs > 60000 && meta.durationMs < 3600000,
+              "metadata duration sane (1min..1h)");
+        check(meta.uri == uri, "metadata uri echoes load");
+
         watch(player, 8, "playing");
         check(player.state().playing, "state.playing after load");
 

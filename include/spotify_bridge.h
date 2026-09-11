@@ -104,6 +104,27 @@ typedef struct SpotifyEvent {
 // filled, 0 when no event is pending, or a negative error code.
 int spotify_poll_event(SpotifyPlayer* player, SpotifyEvent* out);
 
+// Track metadata for the currently loaded track (librespot metadata, no
+// Web API). All strings are truncated to fit; duration is milliseconds.
+#define SPOTIFY_META_TITLE_MAX 256
+#define SPOTIFY_META_ARTIST_MAX 256
+#define SPOTIFY_META_ALBUM_MAX 256
+#define SPOTIFY_META_URI_MAX 128
+#define SPOTIFY_META_ID_MAX 32
+
+typedef struct SpotifyMetadata {
+    char title[SPOTIFY_META_TITLE_MAX];
+    char artist[SPOTIFY_META_ARTIST_MAX];
+    char album[SPOTIFY_META_ALBUM_MAX];
+    uint32_t duration_ms;
+    char uri[SPOTIFY_META_URI_MAX];
+    char track_id[SPOTIFY_META_ID_MAX];
+} SpotifyMetadata;
+
+// Fetch metadata for the last loaded URI (blocks on network). Fails when
+// not connected or when nothing was loaded yet.
+int spotify_current_metadata(SpotifyPlayer* player, SpotifyMetadata* out);
+
 // Human-readable description of the last failure on the calling thread.
 // Never NULL. Pass NULL to read a creation-time failure.
 const char* spotify_last_error(const SpotifyPlayer* player);

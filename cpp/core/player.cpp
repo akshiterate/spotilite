@@ -74,6 +74,20 @@ bool Player::setVolume(float volume) {
     return true;
 }
 
+bool Player::metadata(TrackMetadata& out) {
+    SpotifyMetadata raw{};
+    if (!callOk(spotify_current_metadata(handle_, &raw))) {
+        return false;
+    }
+    out.title = raw.title;
+    out.artist = raw.artist;
+    out.album = raw.album;
+    out.durationMs = raw.duration_ms;
+    out.uri = raw.uri;
+    out.trackId = raw.track_id;
+    return true;
+}
+
 bool Player::next() {
     if (!queue_.next()) {
         lastError_ = "at end of queue";
