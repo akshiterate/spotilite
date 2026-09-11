@@ -28,6 +28,12 @@ public:
         return index_ < uris_.size() ? uris_[index_] : kEmpty;
     }
 
+    // Row access for list UIs; empty string when out of range.
+    const std::string& at(std::size_t i) const {
+        static const std::string kEmpty;
+        return i < uris_.size() ? uris_[i] : kEmpty;
+    }
+
     // Advance/retreat when possible; false at the ends (or when empty).
     bool next() {
         if (index_ + 1 < uris_.size()) {
