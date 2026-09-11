@@ -171,8 +171,8 @@ typedef struct SpotifySearchItem {
     uint32_t duration_ms;  // tracks only, else 0
 } SpotifySearchItem;
 
-// Search `query` (types bitmask, 0 = all), page `limit` (1..50 clamped)
-// starting at `offset`. Fills up to `cap` items, returns the count, or a
+// Search `query` (types bitmask, 0 = all), page `limit` (1..10 clamped —
+// Spotify rejects more) starting at `offset`. Fills up to `cap` items, returns the count, or a
 // negative error code. Never loads more than requested (paged).
 int spotify_search(SpotifyPlayer* player, const char* query, int types,
                    int limit, int offset, SpotifySearchItem* items, int cap);

@@ -1002,7 +1002,11 @@ fn ensure_access_token(handle: &SpotifyPlayer) -> Result<String, String> {
         },
         None => browser_login(&client_id)?,
     };
-    write_web_cache(&client_id, &token.refresh_token);
+    // Spotify only sometimes rotates the refresh token: an empty one means
+    // "keep using the previous", so never overwrite the cache with empty.
+    if !token.refresh_token.is_empty() {
+        write_web_cache(&client_id, &token.refresh_token);
+    }
     if let Ok(mut guard) = handle.web_token.lock() {
         *guard = Some(token.clone());
     }
@@ -1195,7 +1199,9 @@ pub unsafe extern "C" fn spotify_search(
     if mask & SPOTIFY_SEARCH_PLAYLIST != 0 {
         type_names.push("playlist");
     }
-    let limit_c = limit.clamp(1, 50) as i64;
+    // Spotify rejects limit > 10 ("Invalid limit") despite older docs
+    // saying 50; verified live 2026-09-11 (10 ok, 11+ fail).
+    let limit_c = limit.clamp(1, 10) as i64;
     let offset_c = offset.max(0) as i64;
 
     let mut token = match ensure_access_token(handle) {

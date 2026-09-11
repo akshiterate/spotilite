@@ -111,7 +111,7 @@ int main(int argc, char** argv) {
         const bool haveLogin = std::getenv("SPOTILITE_CLIENT_ID") != nullptr ||
                                std::ifstream(webCache).good();
         std::vector<spotilite::SearchResult> results;
-        const bool ok = player.search("radiohead", spotilite::SEARCH_ANY, 5, 0, results);
+        const bool ok = player.search("radiohead", spotilite::SEARCH_ANY, 20, 0, results);
         if (haveLogin) {
             check(ok, "search radiohead", player.lastError());
             if (ok) {
