@@ -13,7 +13,7 @@ Spirc Connect device driven entirely from the official Spotify app
 (discovery provisioning or cached credentials; stdout status lines;
 Ctrl+C quits). No callable Rust API surface added beyond Phase 0.
 
-Phase 2 (current): C ABI in `include/spotify_bridge.h`, implemented in
+Phase 2: C ABI in `include/spotify_bridge.h`, implemented in
 `rust/librespot-bridge/src/lib.rs` against pinned librespot 0.8.
 
 ```c
@@ -41,7 +41,7 @@ the player thread (async playback errors via Phase 3 polling, not codes).
 Credentials: machine-local Phase 1 cache, same device id; connect is
 idempotent; missing cache fails with AUTH + message.
 
-Phase 3 (current): added event polling (foreseen by 1.7, additive only —
+Phase 3: added event polling (foreseen by 1.7, additive only —
 no existing signature changed):
 
 ```c
@@ -66,7 +66,7 @@ cluster updates, shuffle/repeat flags, queue dumps). Position events flow
 at 1s while playing (`position_update_interval`). Channel behind a Mutex;
 poison/disconnect surface as INTERNAL.
 
-Phase 3 (current): C++ core in `cpp/core/` — the only layer frontends may
+Phase 3: C++ core in `cpp/core/` — the only layer frontends may
 use. `spotilite::Player` (RAII over the ABI above):
 connect/loadUri/play/pause/resume/seek/setVolume/next/previous/enqueue,
 `pollEvent`/`drainEvents`, mirrored `PlaybackState`
@@ -74,8 +74,23 @@ connect/loadUri/play/pause/resume/seek/setVolume/next/previous/enqueue,
 errors. `spotilite::Queue` (header-only): add/clear/next/previous/select;
 `loadUri` resets it to the single URI. No Rust symbols leak past the core.
 
-Phase 4 (current): terminal frontend `build/tui.exe` (`cpp/app/tui.*`,
+Phase 4: terminal frontend `build/tui.exe` (`cpp/app/tui.*`,
 `main` included) over the core only. Commands: `play <uri>`, `p`
 toggle, `n`/`b` skip, `add <uri>`, `v <0-100>`, `s` refresh, `h`, `q`.
 Renders title, current URI, elapsed mm:ss, state, volume %, queue size +
 index after every command. Metadata fields are placeholders until Phase 5.
+
+Phase 5 (current): metadata query over librespot metadata (no Web API):
+
+```c
+typedef struct SpotifyMetadata {
+    char title[256]; char artist[256]; char album[256];
+    uint32_t duration_ms; char uri[128]; char track_id[32];
+} SpotifyMetadata;
+int spotify_current_metadata(SpotifyPlayer*, SpotifyMetadata*);
+```
+
+C++: `spotilite::TrackMetadata` + `Player::metadata()` (bool +
+`lastError()`). Fails when not connected / nothing loaded / fetch fails.
+Handle stores the canonical loaded URI; `Track` fetch covers
+title/artist/album/duration in one request.

@@ -116,6 +116,14 @@ Append-only log: date, decision, why, alternatives rejected.
   pins `playing=false` — stale `Playing` events otherwise re-set the flag
   after the pause and invert play/pause toggles. `resume`/`play` stay
   event-driven (optimistic `true` could stick with nothing loaded).
+- 2026-09-11 (Phase 5): Metadata via `Metadata::get` on the stored
+  canonical URI, fetched on demand (no Web API, no new deps). `Track`
+  embeds album + artists, so one request suffices; artist names joined
+  with ", ". Duration taken as milliseconds (verified against a 4:07
+  track). TUI display deliberately untouched — Phase 5 scope is core +
+  docs, and the plan accepts the test app as the display vehicle.
+  Rejected: event-driven capture from `TrackChanged` (fires unreliably on
+  direct loads; fetch is deterministic).
 - 2026-09-11 (Phase 3): Added `spotify_poll_event` + `SpotifyEvent` to the
   ABI. The Phase 3 scope marks the header "read-only unless ABI bug" — this
   is the poll function 1.7 foresees by name, additive only, so it is treated
