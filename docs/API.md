@@ -151,6 +151,21 @@ int spotify_liked_tracks(SpotifyPlayer*, int limit, int offset,
 C++: `Player::likedTracks()` into a vector + total. GUI: Liked section
 with page buttons + Play/Add. Shared `web_get` plumbing; library cap 50.
 
+Phase 10.2 (current): own playlists + their tracks:
+
+```c
+int spotify_playlists(SpotifyPlayer*, int limit, int offset,
+                      SpotifySearchItem* items, int cap, int* total_out);
+int spotify_playlist_tracks(SpotifyPlayer*, const char* playlist, int limit,
+                            int offset, SpotifySearchItem* items, int cap,
+                            int* total_out);  // total -1 (unknown)
+```
+
+Tracks come from `spclient.get_context` (Web API items endpoint is 403
+for new apps) + concurrent metadata names; first page only. C++:
+`Player::playlists/playlistTracks`. GUI: LIKED/PLAYLISTS/TRACKS modes,
+drill-in Play, Back, mode-aware Play/Add.
+
 Phase 9 (current): full queue in `cpp/core/queue.h` — add/clear/next/
 previous/select/at/removeAt/move (index follows its track; removing the
 playing row doesn't stop it). `Player::loadUri` resets; `playCurrent` /

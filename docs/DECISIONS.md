@@ -228,3 +228,10 @@ Append-only log: date, decision, why, alternatives rejected.
   before. GUI library section mirrors the search async pattern; `rust/`
   + `include/` touched because network + ABI live there per 1.6/1.7
   (same as Phase 8).
+- 2026-09-11 (Phase 10.2 Playlists): `/v1/playlists/{id}/tracks` is 403
+  for new apps (own/others, all param variants) while sibling endpoints
+  work — endpoint restriction, not scope. Tracks resolve via
+  `spclient.get_context` (first page) + concurrent metadata names;
+  total -1 (unknown). List subtitle is owner-only (per-playlist totals
+  read 0). GUI library generalized to LIKED/PLAYLISTS/TRACKS modes with
+  drill-in Play, Back (page remembered), mode-aware Play/Add.
