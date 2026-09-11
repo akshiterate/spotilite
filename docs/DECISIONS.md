@@ -26,3 +26,16 @@ Append-only log: date, decision, why, alternatives rejected.
   Rejected: ExternalProject/corrosion (overkill for Phase 0, 1.4).
   Bridge `crate-type = staticlib+rlib` so Phase 2 can link without manifest
   churn.
+- 2026-09-11 (Phase 0): Pinned initial librespot rev
+  `a1b66d3c8a14e55a9572a9e17467150dca618c9a` (from
+  `git ls-remote https://github.com/librespot-org/librespot HEAD`).
+  Manifest at the pinned rev inspected per 1.8: librespot v0.8.0, edition
+  2024, rust-version 1.85 (satisfied by rustc 1.98.1). No API use yet, so no
+  drift to adapt; phase goal unchanged. Feature flags: defaults
+  (`native-tls`, `rodio-backend`, `with-libmdns`) — exactly what Phase 1
+  needs (SChannel TLS, WASAPI audio, pure-Rust mDNS; no external C libs on
+  Windows). Rejected: `default-features = false` (drops audio/TLS/discovery
+  Phase 1 requires), rustls variants (native-tls uses the Windows cert
+  store). `cargo tree -i librespot` shows only `librespot-bridge` as reverse
+  dep; 393 packages in `Cargo.lock`, committed separately per 1.16. Pinned
+  dep release-builds clean (first compile 4m11s, warms cache for Phase 1).
