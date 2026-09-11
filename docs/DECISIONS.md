@@ -148,3 +148,21 @@ Append-only log: date, decision, why, alternatives rejected.
   (background, non-blocking, small caches, right sizes) unchanged.
 - 2026-09-11 (Phase 6): C++ proves dims from BMP headers (no image lib);
   core exposes request/state/path; second-run cache reuse verified green.
+- 2026-09-11 (Phase 7): New dependency Dear ImGui `v1.92.9b` (pinned tag).
+  Purpose: MVP GUI per plan section 7. Existing deps insufficient (no UI
+  toolkit in tree). Cost: vendored source under `third_party/imgui`
+  (~150 files, committed — reproducible without submodule/network steps
+  for stateless agents). Rejected: git submodule (friction for agents +
+  fresh clones), GLFW/SDL (extra windowing deps; Win32 backend uses only
+  system DX11 + GDI).
+- 2026-09-11 (Phase 7): Backend = Win32 + DirectX 11 (most native, zero
+  new runtime deps). ASCII window APIs explicitly (`A`/`W` suffixed) for
+  MinGW predictability. `io.IniFilename = nullptr`.
+- 2026-09-11 (Phase 7): Input area plays pasted URIs; results area lists
+  the queue (click select + Play selected). Real Spotify search needs the
+  Phase 8 Web API and isn't in the acceptance list. `Queue::at(i)` added
+  for row rendering (no behavior change).
+- 2026-09-11 (Phase 7): Metadata fetched via `std::async` off the UI
+  thread, applied only if the track is still current (avoids cross-track
+  races). Artwork textured on ARTWORK_READY from the deterministic disk
+  path (128px).

@@ -111,3 +111,10 @@ never-ready + `log::warn`.
 
 C++: `Player::requestArtwork/artworkReady/artworkPath` (bool/string +
 `lastError()`). No Rust past the core; no GUI yet (visual proof Phase 7).
+
+Phase 7 (current): GUI `build/gui.exe` (`cpp/ui/gui.*`, Win32 + DX11,
+Dear ImGui v1.92.9b vendored) over the core only. URI input + Play,
+queue listbox + Play selected, current track (async metadata + 64px
+artwork texture on READY), progress slider (seek on release),
+Play/Pause + <</>>, live volume slider, status line. `Queue::at(i)`
+added for row rendering.
