@@ -72,6 +72,9 @@ void App::drawPlaylistsWindow() {
     if (ImGui::Button("Refresh")) {
         fetchLibrary(LibMode::PLAYLISTS, libPage_, "", "");
     }
+    if (!error_.empty()) {
+        ImGui::Text("%s", error_.c_str());
+    }
     ImGui::End();
 }
 

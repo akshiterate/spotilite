@@ -365,8 +365,8 @@ pub unsafe extern "C" fn spotify_connect(player: *mut SpotifyPlayer) -> std::os:
         Some(c) => c,
         // First login (GUI users): same PKCE browser flow as Web API
         // search. The connected session persists reusable credentials to
-        // the cache, so later runs never see the browser.
-        None => match first_login_credentials() {
+        // the cache, so later runs skip the browser.
+        None => match first_login_credentials(handle) {
             Ok(c) => c,
             Err(msg) => return fail(SPOTIFY_ERR_AUTH, msg),
         },
@@ -1104,10 +1104,9 @@ const WEBAPI_SCOPES: [&str; 4] = [
     "playlist-read-private",
     "user-follow-read",
 ];
-// Release-time baked client id (public PKCE client, not a secret). Empty
-// means: use SPOTILITE_CLIENT_ID env or the cached login. Release builds
-// may set this so first-run users never touch an env var.
-const DEFAULT_CLIENT_ID: &str = "";
+// Release-time baked client id (public PKCE client, not a secret).
+// Empty means: use SPOTILITE_CLIENT_ID env or the cached login.
+const DEFAULT_CLIENT_ID: &str = "77ee3a6cb300414384c70bbd74cd59bf";
 const WEBAPI_CACHE_FILE: &str = "webapi.json";
 
 /// C layout twin of `SpotifySearchItem` (field order and types must match).
@@ -1139,8 +1138,9 @@ fn write_web_cache(client_id: &str, refresh_token: &str) {
 }
 
 // First-login path for GUI users with no cached session: PKCE browser
-// login, then a session credential derived from the access token.
-fn first_login_credentials() -> Result<Credentials, String> {
+// login, then a session credential derived from the access token. Also
+// persists the web token so search/library work without a second login.
+fn first_login_credentials(handle: &SpotifyPlayer) -> Result<Credentials, String> {
     let client_id = std::env::var("SPOTILITE_CLIENT_ID")
         .ok()
         .filter(|s| !s.trim().is_empty())
@@ -1157,6 +1157,12 @@ fn first_login_credentials() -> Result<Credentials, String> {
             "Spotify login needed: set SPOTILITE_CLIENT_ID to your client id and retry (release builds may bake one in)".to_owned()
         })?;
     let token = browser_login(&client_id)?;
+    if !token.refresh_token.is_empty() {
+        write_web_cache(&client_id, &token.refresh_token);
+    }
+    if let Ok(mut guard) = handle.web_token.lock() {
+        *guard = Some(token.clone());
+    }
     Ok(Credentials::with_access_token(token.access_token))
 }
 

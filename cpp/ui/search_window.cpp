@@ -26,9 +26,13 @@ void App::drawSearchWindow() {
         ImGui::End();
         return;
     }
-    ImGui::InputText("Search", searchBuf_, sizeof(searchBuf_));
+    bool go = ImGui::InputText("Search", searchBuf_, sizeof(searchBuf_),
+                               ImGuiInputTextFlags_EnterReturnsTrue);
     ImGui::SameLine();
-    if (ImGui::Button("Find") && searchBuf_[0] != '\0') {
+    if (ImGui::Button("Find")) {
+        go = true;
+    }
+    if (go && searchBuf_[0] != '\0') {
         pendingSearch_.active = true;
         const std::string query = searchBuf_;
         pendingSearch_.future = std::async(std::launch::async, [this, query] {
