@@ -281,6 +281,7 @@ void App::pollSearch() {
     }
     searchResults_ = std::move(results);
     searchSel_ = 0;
+    sizeSearch_ = true;
     error_.clear();
 }
 
@@ -356,6 +357,7 @@ void App::pollLibrary() {
     libPlaylistId_ = pendingLib_.playlistId;
     libPlaylistName_ = pendingLib_.playlistName;
     libSel_ = 0;
+    sizePlaylists_ = true;
     error_.clear();
 }
 

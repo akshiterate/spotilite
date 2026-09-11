@@ -81,6 +81,9 @@ private:
     int libBackPage_ = 0;
     int seekPosSec_ = 0;
     bool seekHeld_ = false;
+    // Refit-once flags: async content can land after auto-size ran.
+    bool sizeSearch_ = false;
+    bool sizePlaylists_ = false;
     // Track-name cache for queue rows (filled in the background).
     std::map<std::string, TrackMetadata> nameCache_;
     struct PendingNames {
@@ -129,6 +132,7 @@ private:
         bool open = true;
         bool placeMe = true;
         bool focusMe = false;
+        bool sizeMe = false;
         bool active = false;
         std::future<std::pair<std::vector<SearchResult>, std::string>> future;
         std::vector<SearchResult> rows;

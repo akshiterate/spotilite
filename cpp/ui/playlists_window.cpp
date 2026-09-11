@@ -19,6 +19,10 @@ void App::drawPlaylistsWindow() {
         placeMe("playlists", ImVec2(500, 0), 0);
         placePlaylists_ = false;
     }
+    if (sizePlaylists_) {
+        ImGui::SetNextWindowSize(ImVec2(500, 0), ImGuiCond_Always);
+        sizePlaylists_ = false;
+    }
     if (!ImGui::Begin("Playlists", &playlistsOpen_)) {
         ImGui::End();
         return;

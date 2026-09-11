@@ -99,6 +99,10 @@ void App::drawContentWindows() {
             it->placeMe = false;
         }
         ++cascade;
+        if (it->sizeMe) {
+            ImGui::SetNextWindowSize(ImVec2(560, 0), ImGuiCond_Always);
+            it->sizeMe = false;
+        }
         if (it->active) {
             if (it->future.wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
                 it->active = false;
@@ -107,6 +111,7 @@ void App::drawContentWindows() {
                     it->error = error;
                 } else {
                     it->rows = std::move(rows);
+                    it->sizeMe = true;
                 }
             } else {
                 ImGui::Begin(it->title.c_str(), &it->open);

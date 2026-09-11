@@ -18,6 +18,10 @@ void App::drawSearchWindow() {
         placeMe("search", ImVec2(560, 0), 0);
         placeSearch_ = false;
     }
+    if (sizeSearch_) {
+        ImGui::SetNextWindowSize(ImVec2(560, 0), ImGuiCond_Always);
+        sizeSearch_ = false;
+    }
     if (!ImGui::Begin("Search", &searchOpen_)) {
         ImGui::End();
         return;
