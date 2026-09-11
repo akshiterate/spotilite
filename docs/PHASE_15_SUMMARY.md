@@ -69,6 +69,5 @@ Unchanged: `a1b66d3c`, defaults. No manifest change.
 
 ## Version control
 
-- `phase-15: async connect + strip binaries`
-- `phase-15: finalize docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
-- All pushed to `origin/main` at phase completion.
+- `phase-15: async connect + strip binaries` (code + docs, one commit)
+- Pushed to `origin/main` at phase completion.
