@@ -43,11 +43,11 @@ on GitHub, README renders.
 ## Version control
 
 Commit: `phase--1: init repo + README smoke test`
-Hash: `c62e0e8a0c240808d2ea35dee0ddd149181da9c9`
+Hash: `a587a0590c8ef1940934b125d691339af2053935`
 
 `git log --oneline -5` (at commit time):
 
 ```text
-c62e0e8 phase--1: init repo + README smoke test
+a587a05 phase--1: init repo + README smoke test
 56faf1e Add blank README
 ```
