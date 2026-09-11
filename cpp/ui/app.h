@@ -159,6 +159,9 @@ private:
         std::string error;
     };
     std::vector<ContentWin> contentWins_;
+    // Retired in-flight fetches: destroying a running std::future on the
+    // UI thread would block, so they land here and get reaped when ready.
+    std::vector<std::future<std::pair<std::vector<SearchResult>, std::string>>> graveyard_;
 };
 
 }  // namespace spotilite

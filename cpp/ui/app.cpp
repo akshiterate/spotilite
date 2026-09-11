@@ -654,11 +654,21 @@ void App::frame() {
 }
 
 void App::closeAllSecondary() {
+    fprintf(stderr, "[spotilite] closeAllSecondary\n");
     queueOpen_ = searchOpen_ = playlistsOpen_ = settingsOpen_ = false;
+    for (auto& win : contentWins_) {
+        if (win.active) {
+            graveyard_.push_back(std::move(win.future));
+            win.active = false;
+        }
+    }
     contentWins_.clear();
 }
 
 bool App::isOwnWindow(HWND hwnd) const {
+    if (ImGui::GetCurrentContext() == nullptr) {
+        return false;
+    }
     if (hwnd == nullptr || hwnd == hwnd_) {
         return hwnd != nullptr;
     }

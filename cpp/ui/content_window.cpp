@@ -4,6 +4,7 @@
 #include "ui/app.h"
 
 #include <chrono>
+#include <cstdio>
 #include <string>
 #include <vector>
 
@@ -12,6 +13,7 @@
 namespace spotilite {
 
 void App::openContent(const std::string& key, const std::string& title, bool isLiked) {
+    fprintf(stderr, "[spotilite] openContent key=%s\n", key.c_str());
     for (auto& win : contentWins_) {
         if (win.key == key) {
             win.open = true;
@@ -84,6 +86,18 @@ void App::openContent(const std::string& key, const std::string& title, bool isL
 }
 
 void App::drawContentWindows() {
+    // Reap retired fetches without ever blocking the UI thread.
+    for (auto it = graveyard_.begin(); it != graveyard_.end();) {
+        if (it->wait_for(std::chrono::seconds(0)) == std::future_status::ready) {
+            try {
+                it->get();
+            } catch (...) {
+            }
+            it = graveyard_.erase(it);
+        } else {
+            ++it;
+        }
+    }
     int cascade = 0;
     for (auto it = contentWins_.begin(); it != contentWins_.end();) {
         if (!it->open) {
