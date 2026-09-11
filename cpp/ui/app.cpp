@@ -31,6 +31,7 @@ static ID3D11Device* g_pd3dDevice = nullptr;
 static ID3D11DeviceContext* g_pd3dDeviceContext = nullptr;
 static IDXGISwapChain* g_pSwapChain = nullptr;
 static ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
+static spotilite::App* g_app = nullptr;
 
 static void CleanupRenderTarget() {
     if (g_mainRenderTargetView) {
@@ -116,6 +117,15 @@ static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         case WM_DESTROY:
             ::PostQuitMessage(0);
             return 0;
+        case WM_ACTIVATE:
+            // Alt-Tab away (or any focus loss to a foreign window) closes
+            // the utility windows; focus moving between our own windows
+            // (main + viewport secondaries) is ignored.
+            if (LOWORD(wParam) == WA_INACTIVE && g_app &&
+                !g_app->isOwnWindow(reinterpret_cast<HWND>(lParam))) {
+                g_app->closeAllSecondary();
+            }
+            break;
     }
     return ::DefWindowProcA(hWnd, msg, wParam, lParam);
 }
@@ -386,7 +396,11 @@ void App::updateShared() {
         // it is still current (a manual skip already moved on otherwise).
         if (event.type == SPOTIFY_EVENT_TRACK_ENDED &&
             (event.uri.empty() || event.uri == player_.state().currentUri)) {
-            player_.next();  // failure = end of queue, already stopped
+            // Auto-advance; keep the queue-window highlight glued to the
+            // same track (the list shifts up by one underneath it).
+            if (player_.next() && queueUpSel_ > 0) {
+                --queueUpSel_;
+            }
         }
         if (event.type == SPOTIFY_EVENT_ARTWORK_READY && !event.uri.empty() &&
             event.uri == player_.state().currentUri) {
@@ -565,6 +579,24 @@ void App::frame() {
     ImGui::End();
 }
 
+void App::closeAllSecondary() {
+    queueOpen_ = searchOpen_ = playlistsOpen_ = settingsOpen_ = false;
+    contentWins_.clear();
+}
+
+bool App::isOwnWindow(HWND hwnd) const {
+    if (hwnd == nullptr || hwnd == hwnd_) {
+        return hwnd != nullptr;
+    }
+    ImGuiPlatformIO& platformIo = ImGui::GetPlatformIO();
+    for (ImGuiViewport* viewport : platformIo.Viewports) {
+        if (viewport && reinterpret_cast<HWND>(viewport->PlatformHandleRaw) == hwnd) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int App::run() {
     if (!player_.connect()) {
         ::MessageBoxA(nullptr, player_.lastError().c_str(), "spotilite: connect failed",
@@ -605,6 +637,7 @@ int App::run() {
     ctx_ = g_pd3dDeviceContext;
 
     bool done = false;
+    g_app = this;
     while (!done) {
         MSG msg;
         while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
@@ -634,6 +667,7 @@ int App::run() {
     }
 
     releaseArtTexture();
+    g_app = nullptr;
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
     ImGui::DestroyContext();

@@ -221,6 +221,11 @@ Append-only log: date, decision, why, alternatives rejected.
 - 2026-09-11 (post-Phase 9 GUI polish): search Play-result used resetting
   `loadUri` (queue wipe). New `Queue::insertAt` + `Player::playFirst` put
   the track on top and play it, preserving the rest.
+- 2026-09-11 (UI feedback round 2): queue highlight follows its track
+  across auto-advance (selection was positional and went stale when the
+  list shifted underneath it). Alt-Tab (or any focus loss to a foreign
+  window) closes utility windows via WM_ACTIVATE + own-HWND check, per
+  explicit user request; focus moving between our own windows is ignored.
 - 2026-09-11 (UI feedback round): queue rows show `title - artist` via a
   background name cache (`spotify_metadata_for_uri`, 200-entry cap, URIs
   until names land). Secondary windows auto-height (fixed widths kept);

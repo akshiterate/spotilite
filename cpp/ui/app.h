@@ -23,6 +23,9 @@ public:
     App() = default;
     // Creates the main window, runs the frame loop, returns the exit code.
     int run();
+    // Called from the Win32 message loop on focus loss.
+    void closeAllSecondary();
+    bool isOwnWindow(HWND hwnd) const;
 
 private:
     enum class LibMode { LIKED, PLAYLISTS, PLAYLIST_TRACKS, ALBUMS, ALBUM_TRACKS, ARTISTS, ARTIST_TRACKS };
