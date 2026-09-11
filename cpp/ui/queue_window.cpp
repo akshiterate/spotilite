@@ -130,8 +130,7 @@ void App::drawQueueWindow() {
     }
     ImGui::InputText("##movepos", queueMoveBuf_, sizeof(queueMoveBuf_));
     ImGui::SameLine();
-    if (ImGui::Button("Move Selected")) {
-        const int want = std::atoi(queueMoveBuf_);
+    if (ImGui::Button("Move Selected")) {        const int want = std::atoi(queueMoveBuf_);
         if (want < 1 || static_cast<std::size_t>(want) > upcoming ||
             globalSel >= queue.size()) {
             error_ = "enter a position 1..N shown above";
@@ -144,6 +143,9 @@ void App::drawQueueWindow() {
                 error_ = "move failed";
             }
         }
+    }
+    if (!error_.empty()) {
+        ImGui::Text("%s", error_.c_str());
     }
     ImGui::End();
 }

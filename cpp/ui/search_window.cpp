@@ -66,6 +66,9 @@ void App::drawSearchWindow() {
             error_.clear();
         }
     }
+    if (!error_.empty()) {
+        ImGui::Text("%s", error_.c_str());
+    }
     ImGui::End();
 }
 
