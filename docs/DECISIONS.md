@@ -179,3 +179,11 @@ Append-only log: date, decision, why, alternatives rejected.
   `webapi.json` machine-locally); never in repo, logs, or docs. Scopes
   `user-library-read` + `playlist-read-private` pre-cover Phase 10 so one
   login suffices (search itself needs no scope).
+- 2026-09-11 (Phase 8): `SEARCH_ALL` collides with a Windows SDK macro —
+  the C++ enumerator is `SEARCH_ANY` (same bitmask 15); the C ABI keeps
+  `SPOTIFY_SEARCH_ALL`. Null entries in playlist results are filtered
+  (empty URI) after a live run showed a blank row.
+- 2026-09-11 (Phase 8): GUI search is async (`std::async`, results +
+  error pair); only track rows play, other kinds report it. Live test:
+  coordinated browser login worked first try; cached refresh needs no env
+  afterwards; searched track played end to end with correct metadata.

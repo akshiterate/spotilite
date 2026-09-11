@@ -133,6 +133,10 @@ token cached machine-locally (`webapi.json`, never repo); 401 → refresh +
 single retry. Limit clamped 1..50, types 0 = all. Structured items — no
 JSON crosses into C++.
 
+C++: `spotilite::SearchResult` + `SearchKind` (`SEARCH_ANY` = all; `ALL`
+is a Windows macro) + `Player::search()` into a vector. GUI: async Find,
+results listbox, Play-result (tracks only).
+
 Phase 7 (current): GUI `build/gui.exe` (`cpp/ui/gui.*`, Win32 + DX11,
 Dear ImGui v1.92.9b vendored) over the core only. URI input + Play,
 queue listbox + Play selected, current track (async metadata + 64px

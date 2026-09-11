@@ -1,10 +1,6 @@
 # Phase 8 Summary — Search
 
-> MID-PHASE CHECKPOINT A (not the final Phase 8 report).
-> OAuth + search ABI done and building. Remaining: C++ core search +
-> GUI results list + LIVE browser-auth test (client_id received, needs a
-> coordinated run: the login page opens on the user's desktop), then
-> finalize + `PHASE 8 COMPLETE`.
+Final report. Live-tested end to end (see Verified).
 
 ## Goal
 
@@ -34,12 +30,34 @@ isolated behind the C++ core (plans.md Phase 8).
   Scopes: `user-library-read` + `playlist-read-private` (search needs
   none; pre-covers Phase 10 so one login suffices).
 - `cargo build --release` exit 0, no warnings.
+- `cpp/core/player.h/.cpp`: `SearchKind` (+`SEARCH_ANY`; `SEARCH_ALL`
+  collides with a Windows SDK macro — renamed), `SearchResult`,
+  `Player::search()` into a `vector` (bool + `lastError()`).
+- `cpp/core/core_test.cpp`: search section — without login expects the
+  clean AUTH error; with login prints rows and checks non-empty.
+- `cpp/ui/gui.h/.cpp`: Search input + Find (async like metadata),
+  results listbox (`name — subtitle`), Play-result button (tracks load;
+  other kinds report "only tracks can be played yet"). Window 660x700.
+- Live-test fix: Spotify sometimes returns null playlist entries —
+  empty-URI rows are now filtered in the bridge.
 
-## NOT yet done
+## Verified
 
-C++ `Player::search`, GUI results list + play-from-results, and the live
-test: first `spotify_search` call opens the browser on the user's machine
-for the one-time login, then results must return. Needs coordination.
+- Error path (no env, no cache): `search without login fails clean`,
+  browser never opens. Exit 0.
+- LIVE coordinated run (user completed the browser login while the probe
+  waited): `search radiohead` → 5 tracks + 5 artists + 5 albums +
+  4 playlists, all real (Creep, OK Computer, ...), exit 0.
+- Cache priming proven: second run with NO env used the cached refresh
+  token (no browser) and played the searched track end to end —
+  `spotify:track:70LcF31zb1H0PyJoS1Sx1r` (Creep, metadata
+  Creep/Radiohead/Pablo Honey/3:58), full playback + artwork + queue
+  checks all `ok`, exit 0.
+- `build/gui.exe` relinked and smoke-tested alive; interactive search →
+  play is user-testable in the GUI now.
+- `cargo build --release` + `cmake --build build --config Release` exit 0.
+- `git status` clean; scope respected (`include/`, `rust/`,
+  `cpp/core/**`, `cpp/ui/**`, `docs/`; TUI/CMakeLists untouched).
 
 ## librespot rev
 
@@ -49,5 +67,8 @@ Unchanged: `a1b66d3c`, defaults. Manifest delta is only the three search deps.
 
 - `phase-8: add OAuth search ABI`
 - `phase-8: Cargo.lock for search deps`
-- `phase-8: checkpoint A docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
-- Pushed to `origin/main`.
+- `phase-8: checkpoint A docs`
+- `phase-8: add core search + GUI results`
+- `phase-8: empty-URI row filter + live-test green`
+- `phase-8: finalize docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
+- All pushed to `origin/main` at phase completion.
