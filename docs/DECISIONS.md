@@ -266,6 +266,10 @@ Append-only log: date, decision, why, alternatives rejected.
   session cache exists (new `streaming` scope; `DEFAULT_CLIENT_ID` const
   for release baking, env/cache otherwise). Connected sessions persist
   blobs, so later runs skip the browser. Existing blob users unaffected.
+- 2026-09-11 (release UX verified): clean-profile run — browser
+  auto-opened, login completed, connect/play/pause/destroy all green,
+  credentials primed. README first-run section rewritten around it
+  (headless demoted to speaker-mode option).
 - 2026-09-11 (UI feedback round 6): main window spread + centered
   (nav/artwork/title/slider/controls/volume), hero artwork 192px from
   the cached 256px file, 90%-width slider, large fixed-size transport
