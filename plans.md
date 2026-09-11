@@ -1,8 +1,8 @@
-# Spotify-lite — Agent Development Plan
+# spotilite — Agent Development Plan
 
 ## 0. Project Definition
 
-**Project:** Spotify-lite
+**Project:** spotilite
 
 **Goal:** Build a very lightweight native Spotify Premium client for Windows, with Linux support later.
 
@@ -442,7 +442,7 @@ failure is explicitly reported with reason.
 # 2. Architecture
 
 ```text
-                         spotify-lite
+                         spotilite
                               │
                  ┌────────────┴────────────┐
                  │                         │
@@ -480,7 +480,7 @@ The C++ application must not depend directly on librespot internals.
 # 3. Repository Layout
 
 ```text
-spotify-lite/
+spotilite/
 │
 ├── CMakeLists.txt
 ├── Cargo.toml
@@ -530,7 +530,7 @@ cmake --build build --config Release
 The final executable should eventually be:
 
 ```text
-build/Release/spotify-lite.exe
+build/Release/spotilite.exe
 ```
 
 ---
@@ -581,7 +581,7 @@ The initial GUI should eventually resemble:
 
 ```text
 ┌─────────────────────────────────────────────┐
-│ Spotify-lite                                │
+│ spotilite                                │
 ├─────────────────────────────────────────────┤
 │ Search: [________________________]           │
 │                                             │
@@ -651,7 +651,7 @@ No code. No CMake/Cargo changes. No secrets.
   with `git remote add origin https://github.com/akshiterate/spotilite.git`.
   If `origin` exists but points elsewhere, STOP and ask — do not retarget it.
 - [ ] Check `git config user.name` / `user.email` (local). If missing, STOP and report — do not set globally.
-- [ ] Create/update `README.md` with repo title (`Spotify-lite`) + one-line goal.
+- [ ] Create/update `README.md` with repo title (`spotilite`) + one-line goal.
 - [ ] Ensure `.gitignore` ignores `build/`, `target/`, `*.token`, `*credential*`, cache/, auth/.
 - [ ] Create `docs/` stub if missing (empty `API.md`, `DECISIONS.md` allowed).
 - [ ] Commit: `phase--1: init repo + README smoke test`.
@@ -703,7 +703,7 @@ Create the minimal buildable project.
 ### Expected application
 
 ```text
-Spotify-lite
+spotilite
 Build successful.
 ```
 
@@ -719,7 +719,7 @@ cmake --build build --config Release
 and:
 
 ```powershell
-build\Release\spotify-lite.exe
+build\Release\spotilite.exe
 ```
 
 launches successfully.
@@ -747,7 +747,7 @@ Prove that Spotify playback works before building the application around it.
 - [ ] Configure Spotify Connect/discovery.
 - [ ] Build a minimal headless receiver.
 - [ ] Authenticate.
-- [ ] Make Spotify-lite visible to the official Spotify application.
+- [ ] Make spotilite visible to the official Spotify application.
 - [ ] Play a track.
 
 ### Success condition
@@ -757,7 +757,7 @@ Official Spotify
       ↓
 Connect to a device
       ↓
-Spotify-lite
+spotilite
       ↓
 Play
       ↓
@@ -815,7 +815,7 @@ The actual API should reflect the current librespot implementation.
 Create a tiny C++ console test:
 
 ```text
-Spotify-lite bridge test
+spotilite bridge test
 
 Connected.
 
@@ -920,7 +920,7 @@ Create a tiny terminal frontend.
 The TUI should display only:
 
 ```text
-SPOTIFY-LITE
+SPOTILITE
 
 Track
 Artist
@@ -1049,7 +1049,7 @@ Example:
 
 ```text
 ┌─────────────────────────────────────────────┐
-│ Spotify-lite                                │
+│ spotilite                                │
 ├─────────────────────────────────────────────┤
 │ Search: [radiohead________________]         │
 │                                             │
@@ -1195,7 +1195,7 @@ Eventually support:
 ```toml
 bitrate = 160
 normalisation = true
-device_name = "Spotify-lite"
+device_name = "spotilite"
 cache_size_mb = 1024
 connect = true
 ```
@@ -1250,7 +1250,7 @@ Wait for testing.
 Create:
 
 ```powershell
-spotify-lite.exe --headless
+spotilite.exe --headless
 ```
 
 Headless mode should:
@@ -1359,7 +1359,7 @@ Each major Linux milestone must be separately testable.
 The intended final structure is:
 
 ```text
-                         spotify-lite
+                         spotilite
                               │
               ┌───────────────┴───────────────┐
               │                               │
@@ -1499,7 +1499,7 @@ Required for:
 The project is complete when the user can launch:
 
 ```powershell
-spotify-lite.exe
+spotilite.exe
 ```
 
 and obtain a lightweight native Spotify client capable of:

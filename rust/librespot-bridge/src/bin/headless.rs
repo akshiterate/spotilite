@@ -1,7 +1,7 @@
 //! Phase 1: minimal headless Spotify Connect receiver (playback proof).
 //!
 //! Credentials come from the local cache or, on first run, from zeroconf
-//! discovery: the device advertises as `Spotify-lite` and the official
+//! discovery: the device advertises as `spotilite` and the official
 //! Spotify app provisions credentials when the user selects it. Playback is
 //! driven entirely from the Spotify app. Ctrl+C quits.
 //!
@@ -29,7 +29,7 @@ use librespot::{
     },
 };
 
-const DEVICE_NAME: &str = "Spotify-lite";
+const DEVICE_NAME: &str = "spotilite";
 const DEVICE_ID_FILE: &str = "device-id";
 
 fn cache_dir() -> PathBuf {
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Error> {
         .filter_module("librespot", log::LevelFilter::Info)
         .init();
 
-    println!("Spotify-lite headless receiver (Phase 1 playback proof)");
+    println!("spotilite headless receiver (Phase 1 playback proof)");
 
     let dir = cache_dir();
     let id = device_id(&dir)?;
