@@ -239,3 +239,9 @@ Append-only log: date, decision, why, alternatives rejected.
   work, so pure Web API with real totals (no context detour). GUI drill
   generalized with a remembered return mode/page; Back works from both
   track views.
+- 2026-09-11 (Phase 10.4 Artists): followed list needs `user-follow-read`
+  (scope added; refresh keeps old grants, so a re-login is mandatory).
+  Auto re-login on 403 "Insufficient client scope" using the cached client
+  id — no env, no file deleting. Followed paging is cursor-based, walked
+  internally to keep the offset ABI uniform. Artist top tracks via context
+  (shared helper with playlist tracks), first page, total -1.

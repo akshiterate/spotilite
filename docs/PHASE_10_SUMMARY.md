@@ -1,8 +1,6 @@
 # Phase 10 Summary — Library
 
-> MID-PHASE CHECKPOINT 3 — Liked Songs, Playlists, Albums work (live
-> verified). Remaining: 4. Artists (needs a new scope + re-login — see
-> below). Per the plan, STOPPING here for user testing.
+Final report. All four subsections live-verified (see Verified).
 
 ## Goal
 
@@ -54,15 +52,16 @@ lazy-loaded/paginated, never bulk-loaded at startup (plans.md Phase 10).
   playlist row explains itself. Fixed a decl-order compile error
   (`LibMode` before first use) along the way.
 
-## Verified (subsections 1–2)
+## Verified (all subsections)
 
-- `build/core_test.exe`: liked (total 47, real rows), playlists (total
-  22, real names/owners), playlist-tracks via context (5 real named
-  tracks from the first playlist), exit 0 — all cached-token, no browser.
-- `build/gui.exe` relinked, 14s smoke alive. Click paths (drill-in, Back,
-  Play/Add per mode) are user-tested at this checkpoint.
-- `cargo build --release` exit 0. (`cmake --build` re-verify at close.)
-- Scope: `include/`, `rust/`, `cpp/core/**`, `cpp/ui/**`, `docs/`.
+- `build/core_test.exe`: liked (47), playlists (22) + context drill,
+  albums (2) + drill (44 tracks), artists (4) + top-tracks drill — all
+  real data, exit 0. Artists run triggered the auto re-login live.
+- `build/gui.exe` relinked, smoke alive (all modes compile into the same
+  LibView; click paths user-tested per checkpoint + final).
+- `cargo build --release` + `cmake --build build --config Release` exit 0.
+- `git status` clean; scope respected (`include/`, `rust/`,
+  `cpp/core/**`, `cpp/ui/**`, `docs/`).
 
 ## Done in subsection 3 — Albums
 
@@ -76,13 +75,29 @@ lazy-loaded/paginated, never bulk-loaded at startup (plans.md Phase 10).
 - Live: 2 saved albums listed; 44-track drill with real names; exit 0.
 - GUI relinked + smoke alive.
 
+## Done in subsection 4 — Artists
+
+- Followed artists need `user-follow-read`, absent from the original
+  login. Added to scopes + auto re-login: on 403 "Insufficient client
+  scope", the bridge reuses the cached client id, opens the browser once,
+  and retries — no env, no file deleting.
+- `spotify_followed_artists` (cursor-walked internally, same offset paging
+  outward) + `spotify_artist_tracks` (context top tracks, first page,
+  total -1 — same machinery as playlist tracks).
+- `Player::followedArtists/artistTracks`, core_test artists section with
+  drill-in, GUI ARTISTS + ARTIST_TRACKS modes in the shared library view.
+- Live coordinated re-login worked first try: 4 followed artists, top
+  tracks of the first with correct names; exit 0.
+
 ## How to test now
 
 1. `cmake --build build --config Release` (cmake+cargo on PATH).
 2. Relink core_test + gui.exe (g++ lines in file headers).
-3. `build/core_test.exe` → liked + playlists + drill + albums + drill.
-4. `build/gui.exe` → Liked / Playlists / Albums, drill into rows, Back,
-   Play/Add at every level.
+3. `build/core_test.exe` → liked + playlists + drill + albums + drill +
+   artists + drill. (First artists run opens the browser once for the new
+   scope if the login predates it.)
+4. `build/gui.exe` → Liked / Playlists / Albums / Artists, drill into
+   rows, Back, Play/Add at every level.
 5. Report: drill-in correct? Back returns right? Play-from-library audible?
 
 ## librespot rev
@@ -96,5 +111,7 @@ Unchanged: `a1b66d3c`, defaults. No manifest change (no new deps).
 - `phase-10: Playlists end-to-end`
 - `phase-10: checkpoint Playlists docs`
 - `phase-10: Albums end-to-end`
-- `phase-10: checkpoint Albums docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
-- Pushed to `origin/main`.
+- `phase-10: checkpoint Albums docs`
+- `phase-10: Artists end-to-end`
+- `phase-10: finalize docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
+- All pushed to `origin/main` at phase completion.

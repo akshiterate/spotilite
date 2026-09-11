@@ -179,6 +179,21 @@ int spotify_album_tracks(SpotifyPlayer*, const char* album, int limit,
 C++: `Player::albums/albumTracks`. GUI: ALBUMS + ALBUM_TRACKS modes,
 Back remembers mode + page.
 
+Phase 10.4 (current): followed artists (cursor-walked, same offset
+contract) + their top tracks via context:
+
+```c
+int spotify_followed_artists(SpotifyPlayer*, int limit, int offset,
+                             SpotifySearchItem* items, int cap, int* total_out);
+int spotify_artist_tracks(SpotifyPlayer*, const char* artist, int limit,
+                          int offset, SpotifySearchItem* items, int cap,
+                          int* total_out);  // total -1 (unknown)
+```
+
+New scope `user-follow-read`; 403 "Insufficient client scope" triggers
+one automatic browser re-login from the cached client id. C++:
+`Player::followedArtists/artistTracks`. GUI: ARTISTS + ARTIST_TRACKS.
+
 Phase 9 (current): full queue in `cpp/core/queue.h` — add/clear/next/
 previous/select/at/removeAt/move (index follows its track; removing the
 playing row doesn't stop it). `Player::loadUri` resets; `playCurrent` /
