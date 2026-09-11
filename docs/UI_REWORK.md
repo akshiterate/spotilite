@@ -3,6 +3,8 @@
 Living handoff for the out-of-plan UI overhaul (approved after Phase 10).
 Plan phases are untouched by this work unless stated.
 
+Status: COMPLETE and user-tested (all three phases below).
+
 ## Phase 1 — Vendor swap (done)
 
 - `third_party/imgui` replaced: master v1.92.9b → docking snapshot
