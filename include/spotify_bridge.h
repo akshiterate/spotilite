@@ -56,8 +56,9 @@ SpotifyPlayer* spotify_create(void);
 // Destroy a player. NULL-safe.
 void spotify_destroy(SpotifyPlayer* player);
 
-// Connect with cached credentials. Idempotent: returns OK if already
-// connected.
+// Connect: cached credentials if present, else a one-time PKCE browser
+// login (same flow as search; needs a client id via env/baked default).
+// Idempotent: returns OK if already connected.
 int spotify_connect(SpotifyPlayer* player);
 
 // Load a playable URI (spotify:track:... / spotify:episode:...) and start

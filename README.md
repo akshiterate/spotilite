@@ -8,15 +8,16 @@ C++ app + Rust/librespot bridge, no Electron/Chromium/WebView. See `plans.md` fo
 1. Get `spotilite-vX.Y.Z-windows-x86_64.zip` from the
    [releases page](https://github.com/akshiterate/spotilite/releases) and
    unzip it anywhere. No installer, no admin rights, no extra runtimes.
-2. Run `gui.exe`. First launch shows "Connecting..." — nothing is cached yet.
-3. For device provisioning alternative, run `headless.exe`: it advertises
-   as `spotilite`; pick it under "Connect to a device" in the official
-   Spotify app to provision credentials.
-4. Web search needs a one-time browser login: type anything in Search and
-   press Find. It asks for `SPOTILITE_CLIENT_ID` once — create a free app
+2. Run `gui.exe`. First launch needs a one-time Spotify login: press Play
+   (or Search anything) and a browser window opens — log in, and the app
+   connects. It asks for `SPOTILITE_CLIENT_ID` first — create a free app
    at <https://developer.spotify.com/dashboard>, allowlist the redirect
-   `http://127.0.0.1:8898/login`, and paste the Client ID. Afterwards a
-   cached refresh token is used; the ID is never stored in the repo.
+   `http://127.0.0.1:8898/login`, and paste the Client ID (release builds
+   may bake one in, skipping this step). Afterwards cached credentials
+   are reused; the ID is never stored in the repo.
+3. `headless.exe` is the optional Connect-speaker mode: it advertises as
+   `spotilite`; pick it under "Connect to a device" in the official
+   Spotify app to provision it.
 
 State (credentials, cache, config) lives under
 `%LOCALAPPDATA%\spotilite\` — nothing is written next to the exe.

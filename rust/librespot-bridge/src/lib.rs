@@ -21,8 +21,11 @@ use std::sync::{
 
 use librespot::{
     core::{
-        authentication::AuthenticationError, cache::Cache, config::SessionConfig,
-        session::Session, SpotifyUri,
+        authentication::{AuthenticationError, Credentials},
+        cache::Cache,
+        config::SessionConfig,
+        session::Session,
+        SpotifyUri,
     },
     metadata::{Episode, Metadata, Track},
     playback::{
@@ -360,12 +363,13 @@ pub unsafe extern "C" fn spotify_connect(player: *mut SpotifyPlayer) -> std::os:
     }
     let credentials = match handle.cache.credentials() {
         Some(c) => c,
-        None => {
-            return fail(
-                SPOTIFY_ERR_AUTH,
-                "no cached credentials; run the headless receiver once to provision".to_owned(),
-            );
-        }
+        // First login (GUI users): same PKCE browser flow as Web API
+        // search. The connected session persists reusable credentials to
+        // the cache, so later runs never see the browser.
+        None => match first_login_credentials() {
+            Ok(c) => c,
+            Err(msg) => return fail(SPOTIFY_ERR_AUTH, msg),
+        },
     };
     match handle
         .rt
@@ -1091,11 +1095,19 @@ const SPOTIFY_SEARCH_SUBTITLE_MAX: usize = 256;
 
 const WEBAPI_REDIRECT: &str = "http://127.0.0.1:8898/login";
 // Search needs no scope; the library ones pre-cover Phase 10 so one login
-// suffices. NOTE: adding a scope later requires a fresh browser login —
-// refresh keeps the originally granted set (seen live with
-// user-follow-read in 10.4).
-const WEBAPI_SCOPES: [&str; 3] =
-    ["user-library-read", "playlist-read-private", "user-follow-read"];
+// suffices. `streaming` covers session login for first-run GUI users.
+// NOTE: adding a scope later requires a fresh browser login — refresh
+// keeps the originally granted set (seen live with user-follow-read).
+const WEBAPI_SCOPES: [&str; 4] = [
+    "streaming",
+    "user-library-read",
+    "playlist-read-private",
+    "user-follow-read",
+];
+// Release-time baked client id (public PKCE client, not a secret). Empty
+// means: use SPOTILITE_CLIENT_ID env or the cached login. Release builds
+// may set this so first-run users never touch an env var.
+const DEFAULT_CLIENT_ID: &str = "";
 const WEBAPI_CACHE_FILE: &str = "webapi.json";
 
 /// C layout twin of `SpotifySearchItem` (field order and types must match).
@@ -1126,8 +1138,29 @@ fn write_web_cache(client_id: &str, refresh_token: &str) {
     let _ = std::fs::write(web_cache_path(), text);
 }
 
-fn browser_login(client_id: &str) -> Result<OAuthToken, String> {
-    OAuthClientBuilder::new(client_id, WEBAPI_REDIRECT, WEBAPI_SCOPES.to_vec())
+// First-login path for GUI users with no cached session: PKCE browser
+// login, then a session credential derived from the access token.
+fn first_login_credentials() -> Result<Credentials, String> {
+    let client_id = std::env::var("SPOTILITE_CLIENT_ID")
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| read_web_cache().map(|(id, _)| id))
+        .or_else(|| {
+            let baked = DEFAULT_CLIENT_ID.trim();
+            if baked.is_empty() {
+                None
+            } else {
+                Some(baked.to_owned())
+            }
+        })
+        .ok_or_else(|| {
+            "Spotify login needed: set SPOTILITE_CLIENT_ID to your client id and retry (release builds may bake one in)".to_owned()
+        })?;
+    let token = browser_login(&client_id)?;
+    Ok(Credentials::with_access_token(token.access_token))
+}
+
+fn browser_login(client_id: &str) -> Result<OAuthToken, String> {    OAuthClientBuilder::new(client_id, WEBAPI_REDIRECT, WEBAPI_SCOPES.to_vec())
         .open_in_browser()
         .build()
         .map_err(|e| format!("oauth setup: {e}"))?

@@ -261,6 +261,11 @@ Append-only log: date, decision, why, alternatives rejected.
   content was still loading, so search/playlists/content windows stayed
   tiny. They now refit once when rows land (size flags consumed before
   Begin).
+- 2026-09-11 (release UX): normal users never touch headless —
+  `spotify_connect` falls back to the search PKCE browser flow when no
+  session cache exists (new `streaming` scope; `DEFAULT_CLIENT_ID` const
+  for release baking, env/cache otherwise). Connected sessions persist
+  blobs, so later runs skip the browser. Existing blob users unaffected.
 - 2026-09-11 (UI feedback round 6): main window spread + centered
   (nav/artwork/title/slider/controls/volume), hero artwork 192px from
   the cached 256px file, 90%-width slider, large fixed-size transport
