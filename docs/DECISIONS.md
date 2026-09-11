@@ -130,3 +130,19 @@ Append-only log: date, decision, why, alternatives rejected.
   as sanctioned completion rather than redesign. Rejected: callbacks across
   the ABI (1.7 forbids until required; polling suffices), exposing raw
   librespot event enums (C++ must not depend on Rust types, 1.7).
+- 2026-09-11 (Phase 6): New dependency `image 0.25` (decode JPEG + resize
+  + BMP encode). Purpose: cover-art pipeline with zero C++ image code.
+  Existing deps insufficient (nothing decodes/resizes images). Cost: pure
+  Rust, `default-features = false` + `jpeg,bmp` only, small tree delta.
+  Rejected: stb_image in C++ (pushes decode across the ABI), PNG disk
+  format (C++ can't verify dims without a lib), direct CDN HTTPS (would
+  need an HTTP client dep; `spclient.get_image` already does it).
+- 2026-09-11 (Phase 6): Disk format BMP for both sizes so the C++ test
+  verifies dimensions from the 54-byte header with no library (revisit in
+  Phase 7 if the GUI prefers another format). Memory cache hand-rolled
+  FIFO cap 8 (no `lru` dep, 1.4). Failures never-ready + warn (no ABI
+  growth for error text across threads).
+- 2026-09-11 (Phase 6): Acceptance adaptation — no UI exists yet, so
+  "appears beside the track" is proven at cache level (READY event + valid
+  files, non-blocking) and lands visually in the Phase 7 GUI. Phase goal
+  (background, non-blocking, small caches, right sizes) unchanged.

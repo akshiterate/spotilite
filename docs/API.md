@@ -94,3 +94,17 @@ C++: `spotilite::TrackMetadata` + `Player::metadata()` (bool +
 `lastError()`). Fails when not connected / nothing loaded / fetch fails.
 Handle stores the canonical loaded URI; `Track` fetch covers
 title/artist/album/duration in one request.
+
+Phase 6 (current): artwork over librespot cover bytes (no Web API).
+`SPOTIFY_ART_128/256`, `SPOTIFY_EVENT_ARTWORK_READY 8`:
+
+```c
+int spotify_request_artwork(SpotifyPlayer*, const char* uri);  // background, idempotent
+int spotify_artwork_state(SpotifyPlayer*, const char*, int size, int* ready_out);
+int spotify_artwork_path(SpotifyPlayer*, const char*, int size, char* out, int cap);
+```
+
+Disk: `%LOCALAPPDATA%\spotilite\cache\art\<track-id>-<size>.bmp`
+(128+256, Triangle downscale). Memory: 128px bytes, FIFO cap 8,
+promoted on sync queries. Ready reported via poll drain; failures stay
+never-ready + `log::warn`.
