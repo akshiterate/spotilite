@@ -1015,40 +1015,48 @@ fn ensure_access_token(handle: &SpotifyPlayer) -> Result<String, String> {
 
 enum SearchError {
     Unauthorized,
+    Auth(String),
     Other(String),
 }
 
-async fn web_search(
-    token: &str,
-    query: &str,
-    types: &str,
-    limit: i64,
-    offset: i64,
+// Authenticated GET against api.spotify.com with a single 401-refresh
+// retry. Shared by search + library fetches (Phase 8/10).
+async fn web_get(
+    handle: &SpotifyPlayer,
+    endpoint: &str,
+    params: &[(&str, String)],
 ) -> Result<Value, SearchError> {
-    let response = reqwest::Client::new()
-        .get("https://api.spotify.com/v1/search")
-        .query(&[
-            ("q", query.to_owned()),
-            ("type", types.to_owned()),
-            ("limit", limit.to_string()),
-            ("offset", offset.to_string()),
-        ])
-        .bearer_auth(token)
-        .send()
-        .await
-        .map_err(|e| SearchError::Other(format!("search request: {e}")))?;
-    let status = response.status();
-    let text = response
-        .text()
-        .await
-        .map_err(|e| SearchError::Other(format!("search body: {e}")))?;
-    if status.as_u16() == 401 {
-        return Err(SearchError::Unauthorized);
+    let url = format!("https://api.spotify.com{endpoint}");
+    for attempt in 0..2 {
+        let token = ensure_access_token(handle).map_err(SearchError::Auth)?;
+        let response = reqwest::Client::new()
+            .get(&url)
+            .query(params)
+            .bearer_auth(&token)
+            .send()
+            .await
+            .map_err(|e| SearchError::Other(format!("request: {e}")))?;
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .map_err(|e| SearchError::Other(format!("body: {e}")))?;
+        if status.as_u16() == 401 && attempt == 0 {
+            if let Ok(mut guard) = handle.web_token.lock() {
+                *guard = None;
+            }
+            continue;
+        }
+        if status.as_u16() == 401 {
+            return Err(SearchError::Unauthorized);
+        }
+        if !status.is_success() {
+            return Err(SearchError::Other(format!("http {status}: {text}")));
+        }
+        return serde_json::from_str(&text)
+            .map_err(|e| SearchError::Other(format!("parse: {e}")));
     }
-    if !status.is_success() {
-        return Err(SearchError::Other(format!("search http {status}: {text}")));
-    }
-    serde_json::from_str(&text).map_err(|e| SearchError::Other(format!("search parse: {e}")))
+    Err(SearchError::Unauthorized)
 }
 
 struct RawItem {
@@ -1081,19 +1089,23 @@ fn artists_of(value: &Value) -> String {
         .unwrap_or_default()
 }
 
+fn map_track(out: &mut Vec<RawItem>, item: &Value) {
+    out.push(RawItem {
+        kind: SPOTIFY_SEARCH_TRACK,
+        uri: str_field(item, "uri"),
+        name: str_field(item, "name"),
+        subtitle: artists_of(item),
+        duration_ms: item
+            .get("duration_ms")
+            .and_then(|d| d.as_u64())
+            .unwrap_or(0) as u32,
+    });
+}
+
 fn push_tracks(out: &mut Vec<RawItem>, value: &Value) {
     if let Some(items) = value.get("tracks").and_then(|t| t.get("items")).and_then(|i| i.as_array()) {
         for item in items {
-            out.push(RawItem {
-                kind: SPOTIFY_SEARCH_TRACK,
-                uri: str_field(item, "uri"),
-                name: str_field(item, "name"),
-                subtitle: artists_of(item),
-                duration_ms: item
-                    .get("duration_ms")
-                    .and_then(|d| d.as_u64())
-                    .unwrap_or(0) as u32,
-            });
+            map_track(out, item);
         }
     }
 }
@@ -1204,35 +1216,22 @@ pub unsafe extern "C" fn spotify_search(
     let limit_c = limit.clamp(1, 10) as i64;
     let offset_c = offset.max(0) as i64;
 
-    let mut token = match ensure_access_token(handle) {
-        Ok(t) => t,
-        Err(msg) => return fail(SPOTIFY_ERR_AUTH, msg),
-    };
-    let run = |token: &str| {
-        handle.rt.block_on(web_search(
-            token,
-            &query_text,
-            &type_names.join(","),
-            limit_c,
-            offset_c,
-        ))
-    };
-    let mut value = run(&token);
-    if matches!(value, Err(SearchError::Unauthorized)) {
-        if let Ok(mut guard) = handle.web_token.lock() {
-            *guard = None;
-        }
-        token = match ensure_access_token(handle) {
-            Ok(t) => t,
-            Err(msg) => return fail(SPOTIFY_ERR_AUTH, msg),
-        };
-        value = run(&token);
-    }
+    let value = handle.rt.block_on(web_get(
+        handle,
+        "/v1/search",
+        &[
+            ("q", query_text.clone()),
+            ("type", type_names.join(",")),
+            ("limit", limit_c.to_string()),
+            ("offset", offset_c.to_string()),
+        ],
+    ));
     let value = match value {
         Ok(v) => v,
         Err(SearchError::Unauthorized) => {
             return fail(SPOTIFY_ERR_AUTH, "search unauthorized even after refresh".to_owned())
         }
+        Err(SearchError::Auth(msg)) => return fail(SPOTIFY_ERR_AUTH, msg),
         Err(SearchError::Other(msg)) => return fail(SPOTIFY_ERR_INTERNAL, msg),
     };
 
@@ -1249,11 +1248,16 @@ pub unsafe extern "C" fn spotify_search(
     if mask & SPOTIFY_SEARCH_PLAYLIST != 0 {
         push_playlists(&mut raw, &value);
     }
-    // Spotify sometimes returns null entries; drop rows without a URI.
+    let count = fill_items(items, cap as usize, &mut raw);
+    count as std::os::raw::c_int
+}
+
+// Drop null rows, copy at most `cap` into the caller's buffer.
+fn fill_items(items: *mut SpotifySearchItem, cap: usize, raw: &mut Vec<RawItem>) -> usize {
     raw.retain(|item| !item.uri.is_empty());
-    let count = raw.len().min(cap as usize);
-    // SAFETY: null- and bounds-checked above; caller provides `cap` slots.
-    let dest = unsafe { std::slice::from_raw_parts_mut(items, cap as usize) };
+    let count = raw.len().min(cap);
+    // SAFETY: caller provides `cap` slots (checked by callers).
+    let dest = unsafe { std::slice::from_raw_parts_mut(items, cap) };
     for (i, item) in raw.iter().take(count).enumerate() {
         dest[i].kind = item.kind;
         fill_str(&mut dest[i].uri, &item.uri);
@@ -1261,8 +1265,66 @@ pub unsafe extern "C" fn spotify_search(
         fill_str(&mut dest[i].subtitle, &item.subtitle);
         dest[i].duration_ms = item.duration_ms;
     }
+    count
+}
+#[no_mangle]
+pub unsafe extern "C" fn spotify_liked_tracks(
+    player: *mut SpotifyPlayer,
+    limit: std::os::raw::c_int,
+    offset: std::os::raw::c_int,
+    items: *mut SpotifySearchItem,
+    cap: std::os::raw::c_int,
+    total_out: *mut std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if let Err((code, msg)) = check_connected(handle) {
+        return fail(code, msg);
+    }
+    if items.is_null() || cap <= 0 || total_out.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null items/total buffer".to_owned());
+    }
+    // Library endpoints cap at 50 (unlike search's 10).
+    let limit_c = limit.clamp(1, 50) as i64;
+    let offset_c = offset.max(0) as i64;
+    let value = handle.rt.block_on(web_get(
+        handle,
+        "/v1/me/tracks",
+        &[
+            ("limit", limit_c.to_string()),
+            ("offset", offset_c.to_string()),
+        ],
+    ));
+    let value = match value {
+        Ok(v) => v,
+        Err(SearchError::Unauthorized) => {
+            return fail(SPOTIFY_ERR_AUTH, "library unauthorized even after refresh".to_owned())
+        }
+        Err(SearchError::Auth(msg)) => return fail(SPOTIFY_ERR_AUTH, msg),
+        Err(SearchError::Other(msg)) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+    };
+    let total = value
+        .get("total")
+        .and_then(|t| t.as_u64())
+        .unwrap_or(0);
+    let mut raw: Vec<RawItem> = Vec::new();
+    if let Some(entries) = value.get("items").and_then(|i| i.as_array()) {
+        for entry in entries {
+            if let Some(track) = entry.get("track") {
+                map_track(&mut raw, track);
+            }
+        }
+    }
+    let count = fill_items(items, cap as usize, &mut raw);
+    // SAFETY: null-checked above; caller provides storage.
+    unsafe {
+        *total_out = total.min(i32::MAX as u64) as std::os::raw::c_int;
+    }
     count as std::os::raw::c_int
 }
+
 #[no_mangle]
 pub unsafe extern "C" fn spotify_get_volume(
     player: *mut SpotifyPlayer,

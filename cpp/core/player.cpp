@@ -137,6 +137,31 @@ bool Player::search(const std::string& query, int types, int limit, int offset,
     return true;
 }
 
+bool Player::likedTracks(int limit, int offset, std::vector<SearchResult>& out, int& total) {
+    out.clear();
+    total = 0;
+    SpotifySearchItem buf[50];
+    int totalRaw = 0;
+    const int n = spotify_liked_tracks(handle_, limit, offset, buf,
+                                       static_cast<int>(sizeof(buf) / sizeof(buf[0])),
+                                       &totalRaw);
+    if (n < 0) {
+        lastError_ = spotify_last_error(handle_);
+        return false;
+    }
+    total = totalRaw;
+    for (int i = 0; i < n; ++i) {
+        SearchResult item;
+        item.kind = buf[i].kind;
+        item.uri = buf[i].uri;
+        item.name = buf[i].name;
+        item.subtitle = buf[i].subtitle;
+        item.durationMs = buf[i].duration_ms;
+        out.push_back(item);
+    }
+    return true;
+}
+
 bool Player::requestArtwork(const std::string& uri) {
     return callOk(spotify_request_artwork(handle_, uri.c_str()));
 }

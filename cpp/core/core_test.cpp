@@ -129,6 +129,35 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Liked Songs (Phase 10.1): paged, total reported, same login gating.
+    {
+        const char* localAppData = std::getenv("LOCALAPPDATA");
+        const std::string webCache =
+            (localAppData ? localAppData : "") + std::string("\\spotilite\\cache\\webapi.json");
+        const bool haveLogin = std::getenv("SPOTILITE_CLIENT_ID") != nullptr ||
+                               std::ifstream(webCache).good();
+        std::vector<spotilite::SearchResult> liked;
+        int total = 0;
+        const bool ok = player.likedTracks(5, 0, liked, total);
+        if (haveLogin) {
+            check(ok, "liked tracks", player.lastError());
+            if (ok) {
+                std::cout << "liked total: " << total << "\n";
+                check(total > 0 && static_cast<int>(liked.size()) <= total,
+                      "liked total sane");
+                for (const auto& r : liked) {
+                    std::cout << "liked: " << r.name;
+                    if (!r.subtitle.empty()) {
+                        std::cout << " - " << r.subtitle;
+                    }
+                    std::cout << " <" << r.uri << ">\n";
+                }
+            }
+        } else {
+            check(!ok, "liked without login fails clean", player.lastError());
+        }
+    }
+
     if (argc > 1) {
         const std::string uri = argv[1];
         check(player.loadUri(uri), "load uri", player.lastError());

@@ -8,6 +8,7 @@
 
 #include <future>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -27,6 +28,9 @@ private:
     void pollMetadata();
     void pollSearch();
     bool playSearchResult();
+    void fetchLiked(int page);
+    void pollLiked();
+    bool playLikedResult();
     bool loadArtTexture(const std::string& path);
     void releaseArtTexture();
     bool playSelected();
@@ -42,6 +46,16 @@ private:
     PendingSearch pendingSearch_;
     std::vector<SearchResult> searchResults_;
     int searchSel_ = 0;
+    struct PendingLibrary {
+        bool active = false;
+        int page = 0;
+        std::future<std::tuple<std::vector<SearchResult>, int, std::string>> future;
+    };
+    PendingLibrary pendingLiked_;
+    std::vector<SearchResult> likedResults_;
+    int likedSel_ = 0;
+    int likedPage_ = 0;
+    int likedTotal_ = 0;
     int seekPosSec_ = 0;
     bool seekHeld_ = false;
     std::string lastUri_;

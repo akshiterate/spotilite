@@ -300,6 +300,55 @@ bool Gui::playSearchResult() {
     return true;
 }
 
+void Gui::fetchLiked(int page) {
+    if (page < 0) {
+        return;
+    }
+    pendingLiked_.active = true;
+    pendingLiked_.page = page;
+    pendingLiked_.future = std::async(std::launch::async, [this, page] {
+        std::tuple<std::vector<SearchResult>, int, std::string> out;
+        std::vector<SearchResult>& rows = std::get<0>(out);
+        if (!player_.likedTracks(20, page * 20, rows, std::get<1>(out))) {
+            std::get<2>(out) = player_.lastError();
+        }
+        return out;
+    });
+}
+
+void Gui::pollLiked() {
+    if (!pendingLiked_.active) {
+        return;
+    }
+    if (pendingLiked_.future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+        return;
+    }
+    pendingLiked_.active = false;
+    auto [rows, total, error] = pendingLiked_.future.get();
+    if (!error.empty() && rows.empty()) {
+        error_ = error;
+        return;
+    }
+    likedResults_ = std::move(rows);
+    likedTotal_ = total;
+    likedPage_ = pendingLiked_.page;
+    likedSel_ = 0;
+    error_.clear();
+}
+
+bool Gui::playLikedResult() {
+    if (likedSel_ < 0 || static_cast<std::size_t>(likedSel_) >= likedResults_.size()) {
+        return false;
+    }
+    const SearchResult& item = likedResults_[static_cast<std::size_t>(likedSel_)];
+    if (!player_.playFirst(item.uri)) {
+        error_ = player_.lastError();
+        return false;
+    }
+    error_.clear();
+    return true;
+}
+
 void Gui::frame() {
     // Events drive state; artwork texture follows READY events.
     PlayerEvent event;
@@ -440,6 +489,52 @@ void Gui::frame() {
         }
     }
 
+    // 10.1 Liked Songs (paged library; 20 rows per page).
+    if (ImGui::Button("Liked")) {
+        fetchLiked(0);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("<##liked") && likedPage_ > 0) {
+        fetchLiked(likedPage_ - 1);
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(">##liked")) {
+        fetchLiked(likedPage_ + 1);
+    }
+    ImGui::SameLine();
+    ImGui::Text("page %d of %d", likedPage_ + 1, likedTotal_ / 20 + 1);
+    pollLiked();
+    std::vector<std::string> likedText;
+    for (const auto& r : likedResults_) {
+        likedText.push_back(r.subtitle.empty() ? r.name : r.name + " - " + r.subtitle);
+    }
+    std::vector<const char*> likedRows;
+    for (const auto& t : likedText) {
+        likedRows.push_back(t.c_str());
+    }
+    if (likedSel_ >= static_cast<int>(likedRows.size())) {
+        likedSel_ = static_cast<int>(likedRows.size()) - 1;
+    }
+    if (likedSel_ < 0 && !likedRows.empty()) {
+        likedSel_ = 0;
+    }
+    ImGui::ListBox("##liked", &likedSel_, likedRows.data(), static_cast<int>(likedRows.size()),
+                   6);
+    ImGui::SameLine();
+    if (ImGui::Button("Play liked")) {
+        playLikedResult();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Add liked")) {
+        if (likedSel_ < 0 ||
+            static_cast<std::size_t>(likedSel_) >= likedResults_.size()) {
+            error_ = "nothing selected";
+        } else {
+            player_.enqueue(likedResults_[static_cast<std::size_t>(likedSel_)].uri);
+            error_.clear();
+        }
+    }
+
     // 3+7. Current track + small artwork.
     if (artTex_) {
         ImGui::Image(reinterpret_cast<ImTextureID>(artTex_), ImVec2(64, 64));
@@ -546,7 +641,7 @@ int Gui::run() {
     wc.lpszClassName = L"spotilite";
     ::RegisterClassExW(&wc);
     HWND hwnd = ::CreateWindowW(wc.lpszClassName, L"spotilite", WS_OVERLAPPEDWINDOW, 100, 100,
-                               660, 720, nullptr, nullptr, wc.hInstance, nullptr);
+                               660, 900, nullptr, nullptr, wc.hInstance, nullptr);
     if (!CreateDeviceD3D(hwnd)) {
         CleanupDeviceD3D();
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);

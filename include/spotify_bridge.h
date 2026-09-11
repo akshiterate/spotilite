@@ -181,6 +181,11 @@ typedef struct SpotifySearchItem {
 int spotify_search(SpotifyPlayer* player, const char* query, int types,
                    int limit, int offset, SpotifySearchItem* items, int cap);
 
+// Liked Songs page (limit 1..50 clamped, official library cap).
+// *total_out receives the full library size for paging UI.
+int spotify_liked_tracks(SpotifyPlayer* player, int limit, int offset,
+                         SpotifySearchItem* items, int cap, int* total_out);
+
 // Human-readable description of the last failure on the calling thread.
 // Never NULL. Pass NULL to read a creation-time failure.
 const char* spotify_last_error(const SpotifyPlayer* player);
