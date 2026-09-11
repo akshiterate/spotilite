@@ -294,6 +294,21 @@ bool Player::previous() {
 
 bool Player::playCurrent() { return loadCurrent(); }
 
+bool Player::playFrom(std::size_t i) {
+    if (i >= queue_.size()) {
+        lastError_ = "selection out of range";
+        return false;
+    }
+    if (!queue_.select(i)) {
+        lastError_ = "selection out of range";
+        return false;
+    }
+    for (std::size_t k = 0; k < i; ++k) {
+        queue_.removeAt(0);
+    }
+    return loadCurrent();
+}
+
 bool Player::playFirst(const std::string& uri) {
     queue_.insertAt(0, uri);
     queue_.select(0);

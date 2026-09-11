@@ -88,6 +88,7 @@ public:
     bool previous();               // queue back + load; false at the start
     bool playCurrent();            // load queue current without resetting
     bool playFirst(const std::string& uri);  // insert at top + play, rest kept
+    bool playFrom(std::size_t i);  // drop rows before i, play row i
     // Saved albums page + tracks of one album (URI or raw id).
     bool albums(int limit, int offset, std::vector<SearchResult>& out,
                 int& total);

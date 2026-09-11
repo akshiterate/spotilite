@@ -3,7 +3,9 @@
 // Phase 3 player needs: add, navigate, select.
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -114,6 +116,18 @@ public:
         if (i <= index_) {
             ++index_;
         }
+    }
+
+    // Randomly reorder the upcoming rows only; the current row stays put.
+    // No-op with fewer than 2 upcoming rows.
+    void shuffleUpcoming() {
+        if (index_ + 1 >= uris_.size()) {
+            return;
+        }
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::shuffle(uris_.begin() + static_cast<std::ptrdiff_t>(index_ + 1), uris_.end(),
+                     gen);
     }
 
 private:

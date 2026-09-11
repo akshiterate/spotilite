@@ -1,5 +1,6 @@
-// GUI implementation + entry point. Build (no CMake change — direct link):
-//   g++ -std=c++17 cpp/ui/gui.cpp cpp/core/player.cpp
+// App shell + entry point. Build (no CMake change — direct link):
+//   g++ -std=c++17 cpp/ui/app.cpp cpp/ui/main_window.cpp
+//       cpp/ui/queue_window.cpp cpp/ui/search_window.cpp cpp/core/player.cpp
 //       third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
 //       third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
 //       third_party/imgui/backends/imgui_impl_win32.cpp
@@ -8,7 +9,7 @@
 //       target/release/liblibrespot_bridge.a -o build/gui.exe
 //       -lws2_32 -luserenv -lbcrypt -lole32 -loleaut32 -lpropsys -lntdll
 //       -ld3d11 -ld3dcompiler -ldwmapi -lgdi32 -luser32 -lkernel32 -limm32
-#include "ui/gui.h"
+#include "ui/app.h"
 
 #include <windows.h>
 
@@ -196,7 +197,7 @@ const char* formatTime(char* buf, std::size_t cap, uint32_t ms) {
 
 }  // namespace
 
-void Gui::onTrackChanged(const std::string& uri) {
+void App::onTrackChanged(const std::string& uri) {
     releaseArtTexture();
     metaHave_ = false;
     pendingMeta_.active = false;
@@ -217,7 +218,7 @@ void Gui::onTrackChanged(const std::string& uri) {
     player_.requestArtwork(uri);  // non-blocking; READY event follows
 }
 
-void Gui::pollMetadata() {
+void App::pollMetadata() {
     if (!pendingMeta_.active) {
         return;
     }
@@ -234,7 +235,7 @@ void Gui::pollMetadata() {
     }
 }
 
-bool Gui::loadArtTexture(const std::string& path) {
+bool App::loadArtTexture(const std::string& path) {
     releaseArtTexture();
     ID3D11ShaderResourceView* srv = nullptr;
     if (!BmpToTexture(dev_, path, &srv)) {
@@ -244,7 +245,7 @@ bool Gui::loadArtTexture(const std::string& path) {
     return true;
 }
 
-void Gui::releaseArtTexture() {
+void App::releaseArtTexture() {
     if (artTex_) {
         artTex_->Release();
         artTex_ = nullptr;
@@ -252,18 +253,7 @@ void Gui::releaseArtTexture() {
     artUri_.clear();
 }
 
-bool Gui::playSelected() {
-    const int i = queueSel_;
-    if (i < 0 || static_cast<std::size_t>(i) >= player_.queue().size()) {
-        return false;
-    }
-    if (!player_.queue().select(static_cast<std::size_t>(i))) {
-        return false;
-    }
-    return player_.playCurrent();
-}
-
-void Gui::pollSearch() {
+void App::pollSearch() {
     if (!pendingSearch_.active) {
         return;
     }
@@ -282,7 +272,7 @@ void Gui::pollSearch() {
     error_.clear();
 }
 
-bool Gui::playSearchResult() {
+bool App::playSearchResult() {
     if (searchSel_ < 0 || static_cast<std::size_t>(searchSel_) >= searchResults_.size()) {
         return false;
     }
@@ -300,7 +290,7 @@ bool Gui::playSearchResult() {
     return true;
 }
 
-void Gui::fetchLibrary(LibMode mode, int page, const std::string& playlistId,
+void App::fetchLibrary(LibMode mode, int page, const std::string& playlistId,
                       const std::string& playlistName) {
     if (page < 0) {
         return;
@@ -334,7 +324,7 @@ void Gui::fetchLibrary(LibMode mode, int page, const std::string& playlistId,
     });
 }
 
-void Gui::pollLibrary() {
+void App::pollLibrary() {
     if (!pendingLib_.active) {
         return;
     }
@@ -357,7 +347,7 @@ void Gui::pollLibrary() {
     error_.clear();
 }
 
-bool Gui::playLibraryResult() {
+bool App::playLibraryResult() {
     if (libSel_ < 0 || static_cast<std::size_t>(libSel_) >= libResults_.size()) {
         return false;
     }
@@ -386,10 +376,16 @@ bool Gui::playLibraryResult() {
     return true;
 }
 
-void Gui::frame() {
+void App::updateShared() {
     // Events drive state; artwork texture follows READY events.
     PlayerEvent event;
     while (player_.pollEvent(event)) {
+        // Queue progression: a finished track advances automatically when
+        // it is still current (a manual skip already moved on otherwise).
+        if (event.type == SPOTIFY_EVENT_TRACK_ENDED &&
+            (event.uri.empty() || event.uri == player_.state().currentUri)) {
+            player_.next();  // failure = end of queue, already stopped
+        }
         if (event.type == SPOTIFY_EVENT_ARTWORK_READY && !event.uri.empty() &&
             event.uri == player_.state().currentUri) {
             const std::string path = player_.artworkPath(event.uri, SPOTIFY_ART_128);
@@ -404,6 +400,24 @@ void Gui::frame() {
         onTrackChanged(cur);
     }
     pollMetadata();
+}
+
+void App::frame() {
+    updateShared();
+    if (queueOpen_) {
+        if (focusQueue_) {
+            ImGui::SetNextWindowFocus();
+            focusQueue_ = false;
+        }
+        drawQueueWindow();
+    }
+    if (searchOpen_) {
+        if (focusSearch_) {
+            ImGui::SetNextWindowFocus();
+            focusSearch_ = false;
+        }
+        drawSearchWindow();
+    }
 
     const PlaybackState& s = player_.state();
     // Fill the whole OS window: no ImGui window-inside-a-window.
@@ -414,187 +428,15 @@ void Gui::frame() {
                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
                      ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
 
-    // 1+2. URI input + queue-as-results (real search is Phase 8).
-    ImGui::InputText("URI", uriBuf_, sizeof(uriBuf_));
-    ImGui::SameLine();
-    // NOTE: the ## suffix keeps the visible label while giving the item a
-    // unique ID. Two visible "Play" buttons shared one ID before, which
-    // made clicks land on the wrong button.
-    if (ImGui::Button("Play##uri")) {
-        if (!player_.loadUri(uriBuf_)) {
-            error_ = player_.lastError();
-        } else {
-            error_.clear();
-            uriBuf_[0] = '\0';
-        }
-    }
-    std::vector<const char*> rows;
-    for (std::size_t i = 0; i < player_.queue().size(); ++i) {
-        rows.push_back(player_.queue().at(i).c_str());
-    }
-    if (queueSel_ >= static_cast<int>(rows.size())) {
-        queueSel_ = static_cast<int>(rows.size()) - 1;
-    }
-    if (queueSel_ < 0 && !rows.empty()) {
-        queueSel_ = 0;
-    }
-    ImGui::ListBox("##queue", &queueSel_, rows.data(), static_cast<int>(rows.size()), 5);
-    ImGui::SameLine();
-    if (ImGui::Button("Play selected") && !playSelected()) {
-        error_ = player_.lastError();
+    // Navigation bar: secondary views are separate OS windows.
+    if (ImGui::Button("Queue")) {
+        queueOpen_ = true;
+        focusQueue_ = true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Add URI")) {
-        if (uriBuf_[0] == '\0') {
-            error_ = "type a URI above first";
-        } else {
-            player_.enqueue(uriBuf_);
-            uriBuf_[0] = '\0';
-            error_.clear();
-        }
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Del")) {
-        const std::size_t row =
-            queueSel_ < 0 ? 0 : static_cast<std::size_t>(queueSel_);
-        if (!player_.queue().removeAt(row)) {
-            error_ = "nothing to delete";
-        }
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Up")) {
-        const int from = queueSel_;
-        if (from > 0 &&
-            player_.queue().move(static_cast<std::size_t>(from),
-                                 static_cast<std::size_t>(from - 1))) {
-            queueSel_ = from - 1;
-        }
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Down")) {
-        const int from = queueSel_;
-        if (from >= 0 &&
-            static_cast<std::size_t>(from + 1) < player_.queue().size() &&
-            player_.queue().move(static_cast<std::size_t>(from),
-                                 static_cast<std::size_t>(from + 1))) {
-            queueSel_ = from + 1;
-        }
-    }
-
-    // 8. Web API search + results (tracks playable, other rows display).
-    ImGui::InputText("Search", searchBuf_, sizeof(searchBuf_));
-    ImGui::SameLine();
-    if (ImGui::Button("Find") && searchBuf_[0] != '\0') {
-        pendingSearch_.active = true;
-        const std::string query = searchBuf_;
-        pendingSearch_.future = std::async(std::launch::async, [this, query] {
-            std::pair<std::vector<SearchResult>, std::string> out;
-            if (!player_.search(query, SEARCH_ANY, 20, 0, out.first)) {
-                out.second = player_.lastError();
-            }
-            return out;
-        });
-    }
-    pollSearch();
-    std::vector<std::string> foundText;
-    for (const auto& r : searchResults_) {
-        foundText.push_back(r.subtitle.empty() ? r.name : r.name + " - " + r.subtitle);
-    }
-    std::vector<const char*> found;
-    for (const auto& t : foundText) {
-        found.push_back(t.c_str());
-    }
-    if (searchSel_ >= static_cast<int>(found.size())) {
-        searchSel_ = static_cast<int>(found.size()) - 1;
-    }
-    if (searchSel_ < 0 && !found.empty()) {
-        searchSel_ = 0;
-    }
-    ImGui::ListBox("##results", &searchSel_, found.data(), static_cast<int>(found.size()), 6);
-    ImGui::SameLine();
-    if (ImGui::Button("Play result")) {
-        playSearchResult();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Add to queue")) {
-        if (searchSel_ < 0 ||
-            static_cast<std::size_t>(searchSel_) >= searchResults_.size()) {
-            error_ = "nothing selected";
-        } else {
-            player_.enqueue(searchResults_[static_cast<std::size_t>(searchSel_)].uri);
-            error_.clear();
-        }
-    }
-
-    // 10. Library (Liked Songs + Playlists with track drill-in; paged).
-    if (ImGui::Button("Liked")) {
-        fetchLibrary(LibMode::LIKED, 0, "", "");
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Playlists")) {
-        fetchLibrary(LibMode::PLAYLISTS, 0, "", "");
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Albums")) {
-        fetchLibrary(LibMode::ALBUMS, 0, "", "");
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Artists")) {
-        fetchLibrary(LibMode::ARTISTS, 0, "", "");
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("<##lib") && libPage_ > 0) {
-        fetchLibrary(libMode_, libPage_ - 1, libPlaylistId_, libPlaylistName_);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button(">##lib") && (libTotal_ < 0 || (libPage_ + 1) * 20 < libTotal_)) {
-        fetchLibrary(libMode_, libPage_ + 1, libPlaylistId_, libPlaylistName_);
-    }
-    ImGui::SameLine();
-    if (libMode_ == LibMode::PLAYLIST_TRACKS || libMode_ == LibMode::ALBUM_TRACKS ||
-        libMode_ == LibMode::ARTIST_TRACKS) {
-        ImGui::Text("%s", libPlaylistName_.c_str());
-        ImGui::SameLine();
-        if (ImGui::Button("Back")) {
-            fetchLibrary(libBackMode_, libBackPage_, "", "");
-        }
-    } else if (libTotal_ >= 0) {
-        ImGui::Text("page %d of %d", libPage_ + 1, libTotal_ / 20 + 1);
-    } else {
-        ImGui::Text("page %d", libPage_ + 1);
-    }
-    pollLibrary();
-    std::vector<std::string> libText;
-    for (const auto& r : libResults_) {
-        libText.push_back(r.subtitle.empty() ? r.name : r.name + " - " + r.subtitle);
-    }
-    std::vector<const char*> libRows;
-    for (const auto& t : libText) {
-        libRows.push_back(t.c_str());
-    }
-    if (libSel_ >= static_cast<int>(libRows.size())) {
-        libSel_ = static_cast<int>(libRows.size()) - 1;
-    }
-    if (libSel_ < 0 && !libRows.empty()) {
-        libSel_ = 0;
-    }
-    ImGui::ListBox("##library", &libSel_, libRows.data(), static_cast<int>(libRows.size()),
-                   6);
-    ImGui::SameLine();
-    if (ImGui::Button("Play")) {
-        playLibraryResult();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Add")) {
-        if (libMode_ == LibMode::PLAYLISTS) {
-            error_ = "open the playlist to add tracks";
-        } else if (libSel_ < 0 ||
-                   static_cast<std::size_t>(libSel_) >= libResults_.size()) {
-            error_ = "nothing selected";
-        } else {
-            player_.enqueue(libResults_[static_cast<std::size_t>(libSel_)].uri);
-            error_.clear();
-        }
+    if (ImGui::Button("Search")) {
+        searchOpen_ = true;
+        focusSearch_ = true;
     }
 
     // 3+7. Current track + small artwork.
@@ -688,7 +530,7 @@ void Gui::frame() {
     ImGui::End();
 }
 
-int Gui::run() {
+int App::run() {
     if (!player_.connect()) {
         ::MessageBoxA(nullptr, player_.lastError().c_str(), "spotilite: connect failed",
                       MB_OK | MB_ICONERROR);
@@ -716,6 +558,7 @@ int Gui::run() {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.IniFilename = nullptr;  // no imgui.ini droppings
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;  // separate OS windows
     ImGui::StyleColorsDark();
     ImGui_ImplWin32_Init(hwnd);
     ImGui_ImplDX11_Init(g_pd3dDevice, g_pd3dDeviceContext);
@@ -745,6 +588,10 @@ int Gui::run() {
         g_pd3dDeviceContext->ClearRenderTargetView(g_mainRenderTargetView, clearColor);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         g_pSwapChain->Present(1, 0);
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+        }
     }
 
     releaseArtTexture();
@@ -761,8 +608,8 @@ int Gui::run() {
 
 int main() {
     try {
-        spotilite::Gui gui;
-        return gui.run();
+        spotilite::App app;
+        return app.run();
     } catch (const std::exception& e) {
         ::MessageBoxA(nullptr, e.what(), "spotilite: fatal", MB_OK | MB_ICONERROR);
         return 1;

@@ -1,7 +1,7 @@
-// First native GUI (plans.md Phase 7): Dear ImGui over Win32 + DirectX 11.
-// Uses the C++ core only: no playback logic and no Rust symbols here.
-// Deliberately sparse: URI input, queue list, current track, controls,
-// progress, volume, small artwork. Phase 8 adds Web API search results.
+// Spotilite desktop App shell (UI rework phase 2): owns the single Player
+// (the source of truth) plus one native OS window per view via Dear ImGui
+// viewports (docking branch). Views live in their own files and use only
+// this object: no playback logic and no Rust symbols in views.
 #pragma once
 
 #include <d3d11.h>
@@ -16,15 +16,16 @@
 
 namespace spotilite {
 
-class Gui {
+class App {
 public:
-    Gui() = default;
-    // Creates the window, runs the frame loop, returns the exit code.
+    App() = default;
+    // Creates the main window, runs the frame loop, returns the exit code.
     int run();
 
 private:
     enum class LibMode { LIKED, PLAYLISTS, PLAYLIST_TRACKS, ALBUMS, ALBUM_TRACKS, ARTISTS, ARTIST_TRACKS };
     void frame();
+    void updateShared();
     void onTrackChanged(const std::string& uri);
     void pollMetadata();
     void pollSearch();
@@ -35,11 +36,13 @@ private:
     bool playLibraryResult();
     bool loadArtTexture(const std::string& path);
     void releaseArtTexture();
-    bool playSelected();
+    // Phase-3 library/playlists window reuses these.
+    void drawQueueWindow();
+    void drawSearchWindow();
 
     Player player_;
-    char uriBuf_[256] = "";
-    int queueSel_ = 0;
+    int queueUpSel_ = 0;
+    char queueMoveBuf_[16] = "";
     char searchBuf_[256] = "";
     struct PendingSearch {
         bool active = false;
@@ -85,6 +88,11 @@ private:
 
     ID3D11Device* dev_ = nullptr;
     ID3D11DeviceContext* ctx_ = nullptr;
+
+    bool queueOpen_ = false;
+    bool searchOpen_ = false;
+    bool focusQueue_ = false;
+    bool focusSearch_ = false;
 };
 
 }  // namespace spotilite
