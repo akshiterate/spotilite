@@ -73,3 +73,9 @@ connect/loadUri/play/pause/resume/seek/setVolume/next/previous/enqueue,
 (connected/playing/currentUri/volume/positionMs), bool + `lastError()`
 errors. `spotilite::Queue` (header-only): add/clear/next/previous/select;
 `loadUri` resets it to the single URI. No Rust symbols leak past the core.
+
+Phase 4 (current): terminal frontend `build/tui.exe` (`cpp/app/tui.*`,
+`main` included) over the core only. Commands: `play <uri>`, `p`
+toggle, `n`/`b` skip, `add <uri>`, `v <0-100>`, `s` refresh, `h`, `q`.
+Renders title, current URI, elapsed mm:ss, state, volume %, queue size +
+index after every command. Metadata fields are placeholders until Phase 5.

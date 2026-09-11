@@ -103,6 +103,19 @@ Append-only log: date, decision, why, alternatives rejected.
   Queue is header-only; remove/reorder deferred to Phase 9. Core test is
   scripted (exit 0/1) rather than interactive so runs are reproducible;
   `bridge_test` stays interactive for manual probing.
+- 2026-09-11 (Phase 4): TUI is line-based (`p` + Enter), not single-key:
+  avoids Windows-only console APIs (`conio`) before Phase 12 owns platform
+  code, and keeps the app portable toward Phase 16. Render-on-command (plus
+  `s` refresh) instead of a live loop: stdin blocks, and continuous redraw
+  would violate the perf rules. Rejected: `_kbhit` poll loop (platform
+  API), `system("cls")` flicker.
+- 2026-09-11 (Phase 4): Track/Artist/Album/duration are placeholders; no
+  metadata plumbing smuggled in ahead of Phase 5. 300ms settle after
+  mutating commands so the render drains the events they produce.
+- 2026-09-11 (Phase 4): `Player::pause()` flushes stale queued events then
+  pins `playing=false` — stale `Playing` events otherwise re-set the flag
+  after the pause and invert play/pause toggles. `resume`/`play` stay
+  event-driven (optimistic `true` could stick with nothing loaded).
 - 2026-09-11 (Phase 3): Added `spotify_poll_event` + `SpotifyEvent` to the
   ABI. The Phase 3 scope marks the header "read-only unless ABI bug" — this
   is the poll function 1.7 foresees by name, additive only, so it is treated
