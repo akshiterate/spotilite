@@ -146,3 +146,5 @@ Append-only log: date, decision, why, alternatives rejected.
   "appears beside the track" is proven at cache level (READY event + valid
   files, non-blocking) and lands visually in the Phase 7 GUI. Phase goal
   (background, non-blocking, small caches, right sizes) unchanged.
+- 2026-09-11 (Phase 6): C++ proves dims from BMP headers (no image lib);
+  core exposes request/state/path; second-run cache reuse verified green.

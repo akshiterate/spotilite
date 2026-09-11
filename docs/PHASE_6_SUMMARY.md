@@ -1,9 +1,6 @@
 # Phase 6 Summary — Artwork
 
-> MID-PHASE CHECKPOINT A (not the final Phase 6 report).
-> Artwork fetch + cache + ABI done and building. Remaining: C++ proof
-> via `core_test` (request → ARTWORK_READY → BMP files verified from the
-> header), docs finalize, `PHASE 6 COMPLETE`.
+Final report. All criteria verified at cache level (see Verified).
 
 ## Goal
 
@@ -30,13 +27,27 @@ memory caches, 128px + 256px (plans.md Phase 6).
 - `cargo build --release` exit 0. Two pinned-API fixes during build:
   `Images` lives at `metadata::image::Images`; `BmpEncoder::encode`
   needs no trait import.
+- `cpp/core/player.h/.cpp`: `requestArtwork` / `artworkReady(uri, size)` /
+  `artworkPath` (bool/string + `lastError()`, no Rust past the core).
+- `cpp/core/core_test.cpp`: artwork section — request, ≤20s wait for
+  `ARTWORK_READY` with echoing URI, ready-state for both sizes, BMP dims
+  read from headers (expects exactly 128x128 + 256x256), garbage-URI and
+  bad-size rejection. Same direct-g++ link into `build/core_test.exe`.
 
-## NOT yet done
+## Verified
 
-C++ side proof (core `requestArtwork` helpers + `core_test` artwork
-section reading BMP dims from headers) and any user-visible display —
-no GUI exists yet, so "appears beside the track" is proven at the cache
-level now and lands visually in Phase 7. No TUI image support (terminal).
+- Full `build/core_test.exe spotify:track:4PJEK76V3A1S0XzZJuTWh7`: every
+  artwork check `ok` (ready event, echo, both sizes cached, exact BMP
+  dims, both rejections), playback audibly continuing throughout
+  (position events flow during the fetch — non-blocking proven), then all
+  pre-existing checks still `ok`; `CORE TEST DONE: all passed`, exit 0.
+- Second run reused the disk cache (idempotent fast path) — also green.
+- `cargo build --release` + `cmake --build build --config Release` exit 0.
+- `git status` clean; scope respected (`include/`, `rust/`,
+  `cpp/core/**`, `docs/`; TUI/CMakeLists untouched).
+- User-visible display: none yet by design (no GUI until Phase 7; no
+  terminal images). The acceptance adaptation from checkpoint A stands:
+  cache-level proof now, visual proof in Phase 7.
 
 ## librespot rev
 
@@ -46,5 +57,7 @@ Unchanged: `a1b66d3c`, defaults. Manifest delta is only the `image` dep.
 
 - `phase-6: add artwork fetch+cache ABI`
 - `phase-6: Cargo.lock for image dep`
-- `phase-6: checkpoint A docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
-- Pushed to `origin/main`.
+- `phase-6: checkpoint A docs`
+- `phase-6: add C++ artwork proof` (core helpers + test section)
+- `phase-6: finalize docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
+- All pushed to `origin/main` at phase completion.

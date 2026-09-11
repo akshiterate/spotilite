@@ -108,3 +108,6 @@ Disk: `%LOCALAPPDATA%\spotilite\cache\art\<track-id>-<size>.bmp`
 (128+256, Triangle downscale). Memory: 128px bytes, FIFO cap 8,
 promoted on sync queries. Ready reported via poll drain; failures stay
 never-ready + `log::warn`.
+
+C++: `Player::requestArtwork/artworkReady/artworkPath` (bool/string +
+`lastError()`). No Rust past the core; no GUI yet (visual proof Phase 7).
