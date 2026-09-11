@@ -33,6 +33,21 @@ static IDXGISwapChain* g_pSwapChain = nullptr;
 static ID3D11RenderTargetView* g_mainRenderTargetView = nullptr;
 static spotilite::App* g_app = nullptr;
 
+// Low-level keyboard hook: sees keys before ImGui so hotkeys never
+// double-trigger widgets. Runs on our UI thread; swallows only our own
+// app-local shortcuts (other apps are untouched).
+static LRESULT CALLBACK KeyboardHookProc(int code, WPARAM wParam, LPARAM lParam) {
+    if (code == HC_ACTION && (wParam == WM_KEYDOWN || wParam == WM_SYSKEYDOWN) && g_app) {
+        const KBDLLHOOKSTRUCT* kb = reinterpret_cast<const KBDLLHOOKSTRUCT*>(lParam);
+        const bool ctrl = (::GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+        const bool alt = (::GetAsyncKeyState(VK_MENU) & 0x8000) != 0;
+        if (g_app->handleHotKey(static_cast<int>(kb->vkCode), ctrl, alt)) {
+            return 1;
+        }
+    }
+    return ::CallNextHookEx(nullptr, code, wParam, lParam);
+}
+
 static void CleanupRenderTarget() {
     if (g_mainRenderTargetView) {
         g_mainRenderTargetView->Release();
@@ -117,6 +132,27 @@ static LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
         case WM_DESTROY:
             ::PostQuitMessage(0);
             return 0;
+        case WM_APPCOMMAND: {
+            // Hardware media keys (reach us when focused; background
+            // delivery needs a media session, which we don't register).
+            if (!g_app) {
+                break;
+            }
+            switch (GET_APPCOMMAND_LPARAM(lParam)) {
+                case APPCOMMAND_MEDIA_PLAY_PAUSE:
+                    g_app->togglePlayPause();
+                    return 1;
+                case APPCOMMAND_MEDIA_NEXTTRACK:
+                    g_app->queueNext();
+                    return 1;
+                case APPCOMMAND_MEDIA_PREVIOUSTRACK:
+                    g_app->queuePrev();
+                    return 1;
+                default:
+                    break;
+            }
+            break;
+        }
         case WM_ACTIVATE:
             // Alt-Tab away (or any focus loss to a foreign window) closes
             // the utility windows; focus moving between our own windows
@@ -535,33 +571,7 @@ void App::frame() {
     }
     ImGui::SameLine();
     if (ImGui::Button(s.playing ? "Pause##toggle" : "Play##toggle")) {
-        if (s.playing) {
-            if (player_.pause()) {
-                error_.clear();
-            } else {
-                error_ = player_.lastError();
-            }
-        } else if (s.currentUri.empty() && player_.queue().empty()) {
-            error_ = "queue is empty; add tracks from Search or Playlists";
-        } else if (s.currentUri.empty()) {
-            // Stocked but never started: play the current queue position.
-            if (player_.playCurrent()) {
-                error_.clear();
-            } else {
-                error_ = player_.lastError();
-            }
-        } else {
-            // resume() only revives a paused track: on an ended (or
-            // never-started) track it does nothing, so restart instead.
-            const bool ended = metaHave_ && meta_.durationMs > 0 &&
-                               s.positionMs + 2000 >= meta_.durationMs;
-            const bool ok = ended ? player_.loadUri(s.currentUri) : player_.resume();
-            if (ok) {
-                error_.clear();
-            } else {
-                error_ = player_.lastError();
-            }
-        }
+        togglePlayPause();
     }
     ImGui::SameLine();
     if (ImGui::Button(">>")) {
@@ -600,6 +610,82 @@ bool App::isOwnWindow(HWND hwnd) const {
         if (viewport && reinterpret_cast<HWND>(viewport->PlatformHandleRaw) == hwnd) {
             return true;
         }
+    }
+    return false;
+}
+
+void App::togglePlayPause() {
+    const PlaybackState& s = player_.state();
+    if (s.playing) {
+        if (player_.pause()) {
+            error_.clear();
+        } else {
+            error_ = player_.lastError();
+        }
+    } else if (s.currentUri.empty() && player_.queue().empty()) {
+        error_ = "queue is empty; add tracks from Search or Playlists";
+    } else if (s.currentUri.empty()) {
+        // Stocked but never started: play the current queue position.
+        if (player_.playCurrent()) {
+            error_.clear();
+        } else {
+            error_ = player_.lastError();
+        }
+    } else {
+        // resume() only revives a paused track: on an ended (or
+        // never-started) track it does nothing, so restart instead.
+        const bool ended = metaHave_ && meta_.durationMs > 0 &&
+                           s.positionMs + 2000 >= meta_.durationMs;
+        const bool ok = ended ? player_.loadUri(s.currentUri) : player_.resume();
+        if (ok) {
+            error_.clear();
+        } else {
+            error_ = player_.lastError();
+        }
+    }
+}
+
+void App::queueNext() {
+    if (player_.next()) {
+        error_.clear();
+    } else {
+        error_ = player_.lastError();
+    }
+}
+
+void App::queuePrev() {
+    if (player_.previous()) {
+        error_.clear();
+    } else {
+        error_ = player_.lastError();
+    }
+}
+
+bool App::handleHotKey(int vk, bool ctrl, bool alt) {
+    if (alt) {
+        return false;
+    }
+    // App-local only: typing anywhere else must never be disturbed.
+    HWND foreground = ::GetForegroundWindow();
+    DWORD foregroundPid = 0;
+    ::GetWindowThreadProcessId(foreground, &foregroundPid);
+    if (foreground == nullptr || foregroundPid != ::GetCurrentProcessId()) {
+        return false;
+    }
+    if (ImGui::GetIO().WantTextInput) {
+        return false;
+    }
+    if (!ctrl && vk == VK_SPACE) {
+        togglePlayPause();
+        return true;
+    }
+    if (ctrl && (vk == 'N' || vk == 'P')) {
+        if (vk == 'N') {
+            queueNext();
+        } else {
+            queuePrev();
+        }
+        return true;
     }
     return false;
 }
@@ -645,6 +731,7 @@ int App::run() {
 
     bool done = false;
     g_app = this;
+    hook_ = ::SetWindowsHookExW(WH_KEYBOARD_LL, KeyboardHookProc, ::GetModuleHandle(nullptr), 0);
     while (!done) {
         MSG msg;
         while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
@@ -673,6 +760,10 @@ int App::run() {
         }
     }
 
+    if (hook_) {
+        ::UnhookWindowsHookEx(hook_);
+        hook_ = nullptr;
+    }
     releaseArtTexture();
     g_app = nullptr;
     ImGui_ImplDX11_Shutdown();

@@ -243,6 +243,13 @@ Append-only log: date, decision, why, alternatives rejected.
   selection mapping is index-based so labels always match. Playlist,
   album and artist content windows page to completion (cap 500) instead
   of the first 50.
+- 2026-09-11 (scoped Phase 12 per user: hotkeys only, nothing else):
+  low-level keyboard hook for Space (play/pause), Ctrl+N (next), Ctrl+P
+  (previous) — app-local by foreground-PID check, swallowed before ImGui
+  so widgets never double-trigger; text inputs always let keys through.
+  Hardware media keys via WM_APPCOMMAND (focused window only — background
+  delivery needs a media session, not registered). All three funnel into
+  shared App methods (toggle now extracted from the button).
 - 2026-09-11 (UI feedback round 5): auto-height locked in while async
   content was still loading, so search/playlists/content windows stayed
   tiny. They now refit once when rows land (size flags consumed before

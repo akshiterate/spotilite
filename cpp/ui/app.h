@@ -26,6 +26,12 @@ public:
     // Called from the Win32 message loop on focus loss.
     void closeAllSecondary();
     bool isOwnWindow(HWND hwnd) const;
+    // Shared playback actions (buttons, hotkeys, media keys all funnel here).
+    void togglePlayPause();
+    void queueNext();
+    void queuePrev();
+    // Low-level hotkey hook callback target: true = key consumed.
+    bool handleHotKey(int vk, bool ctrl, bool alt);
 
 private:
     enum class LibMode { LIKED, PLAYLISTS, PLAYLIST_TRACKS, ALBUMS, ALBUM_TRACKS, ARTISTS, ARTIST_TRACKS };
@@ -118,6 +124,7 @@ private:
 
     ID3D11Device* dev_ = nullptr;
     ID3D11DeviceContext* ctx_ = nullptr;
+    HHOOK hook_ = nullptr;
     HWND hwnd_ = nullptr;
     RECT mainRect_ = {};
 
