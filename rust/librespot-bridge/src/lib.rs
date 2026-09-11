@@ -1190,6 +1190,14 @@ fn ensure_access_token(handle: &SpotifyPlayer) -> Result<String, String> {
         .ok()
         .filter(|s| !s.trim().is_empty())
         .or_else(|| cached.as_ref().map(|(id, _)| id.clone()))
+        .or_else(|| {
+            let baked = DEFAULT_CLIENT_ID.trim();
+            if baked.is_empty() {
+                None
+            } else {
+                Some(baked.to_owned())
+            }
+        })
         .ok_or_else(|| {
             "no Spotify app configured: set SPOTILITE_CLIENT_ID to your client id, then search again to log in".to_owned()
         })?;
