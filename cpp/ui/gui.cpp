@@ -318,8 +318,10 @@ void Gui::fetchLibrary(LibMode mode, int page, const std::string& playlistId,
             ok = player_.likedTracks(20, page * 20, rows, std::get<1>(out));
         } else if (mode == LibMode::PLAYLISTS) {
             ok = player_.playlists(20, page * 20, rows, std::get<1>(out));
-        } else {
+        } else if (mode == LibMode::PLAYLIST_TRACKS) {
             ok = player_.playlistTracks(playlistId, 20, page * 20, rows, std::get<1>(out));
+        } else {
+            ok = player_.albumTracks(playlistId, 20, page * 20, rows, std::get<1>(out));
         }
         if (!ok) {
             std::get<2>(out) = player_.lastError();
@@ -355,12 +357,16 @@ bool Gui::playLibraryResult() {
     if (libSel_ < 0 || static_cast<std::size_t>(libSel_) >= libResults_.size()) {
         return false;
     }
-    if (libMode_ == LibMode::PLAYLISTS) {
-        // Drill into the playlist instead of playing it.
+    if (libMode_ == LibMode::PLAYLISTS || libMode_ == LibMode::ALBUMS) {
+        // Drill into the playlist/album instead of playing it.
         const SearchResult& item =
             libResults_[static_cast<std::size_t>(libSel_)];
-        libPlPage_ = libPage_;
-        fetchLibrary(LibMode::PLAYLIST_TRACKS, 0, item.uri, item.name);
+        libBackMode_ = libMode_;
+        libBackPage_ = libPage_;
+        const LibMode tracks = libMode_ == LibMode::PLAYLISTS
+                                   ? LibMode::PLAYLIST_TRACKS
+                                   : LibMode::ALBUM_TRACKS;
+        fetchLibrary(tracks, 0, item.uri, item.name);
         return true;
     }
     const SearchResult& item = libResults_[static_cast<std::size_t>(libSel_)];
@@ -521,6 +527,10 @@ void Gui::frame() {
         fetchLibrary(LibMode::PLAYLISTS, 0, "", "");
     }
     ImGui::SameLine();
+    if (ImGui::Button("Albums")) {
+        fetchLibrary(LibMode::ALBUMS, 0, "", "");
+    }
+    ImGui::SameLine();
     if (ImGui::Button("<##lib") && libPage_ > 0) {
         fetchLibrary(libMode_, libPage_ - 1, libPlaylistId_, libPlaylistName_);
     }
@@ -529,11 +539,11 @@ void Gui::frame() {
         fetchLibrary(libMode_, libPage_ + 1, libPlaylistId_, libPlaylistName_);
     }
     ImGui::SameLine();
-    if (libMode_ == LibMode::PLAYLIST_TRACKS) {
+    if (libMode_ == LibMode::PLAYLIST_TRACKS || libMode_ == LibMode::ALBUM_TRACKS) {
         ImGui::Text("%s", libPlaylistName_.c_str());
         ImGui::SameLine();
         if (ImGui::Button("Back")) {
-            fetchLibrary(LibMode::PLAYLISTS, libPlPage_, "", "");
+            fetchLibrary(libBackMode_, libBackPage_, "", "");
         }
     } else if (libTotal_ >= 0) {
         ImGui::Text("page %d of %d", libPage_ + 1, libTotal_ / 20 + 1);

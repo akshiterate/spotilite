@@ -1502,6 +1502,127 @@ fn write_total(total_out: *mut std::os::raw::c_int, total: u64) {
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn spotify_albums(
+    player: *mut SpotifyPlayer,
+    limit: std::os::raw::c_int,
+    offset: std::os::raw::c_int,
+    items: *mut SpotifySearchItem,
+    cap: std::os::raw::c_int,
+    total_out: *mut std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match check_library_args(player, items, cap, total_out) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let limit_c = limit.clamp(1, 50) as i64;
+    let offset_c = offset.max(0) as i64;
+    let value = handle.rt.block_on(web_get(
+        handle,
+        "/v1/me/albums",
+        &[
+            ("limit", limit_c.to_string()),
+            ("offset", offset_c.to_string()),
+        ],
+    ));
+    let value = match value {
+        Ok(v) => v,
+        Err(SearchError::Unauthorized) => {
+            return fail(SPOTIFY_ERR_AUTH, "library unauthorized even after refresh".to_owned())
+        }
+        Err(SearchError::Auth(msg)) => return fail(SPOTIFY_ERR_AUTH, msg),
+        Err(SearchError::Other(msg)) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+    };
+    let total = value
+        .get("total")
+        .and_then(|t| t.as_u64())
+        .unwrap_or(0);
+    let mut raw: Vec<RawItem> = Vec::new();
+    if let Some(entries) = value.get("items").and_then(|i| i.as_array()) {
+        for entry in entries {
+            if let Some(album) = entry.get("album") {
+                raw.push(RawItem {
+                    kind: SPOTIFY_SEARCH_ALBUM,
+                    uri: str_field(album, "uri"),
+                    name: str_field(album, "name"),
+                    subtitle: artists_of(album),
+                    duration_ms: 0,
+                });
+            }
+        }
+    }
+    let count = fill_items(items, cap as usize, &mut raw);
+    write_total(total_out, total);
+    count as std::os::raw::c_int
+}
+
+fn strip_id(text: &str, prefix: &str) -> Result<String, (std::os::raw::c_int, String)> {
+    let id = text.strip_prefix(prefix).unwrap_or(text).to_owned();
+    if id.is_empty() {
+        return Err((SPOTIFY_ERR_BAD_URI, "empty id".to_owned()));
+    }
+    Ok(id)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_album_tracks(
+    player: *mut SpotifyPlayer,
+    album: *const c_char,
+    limit: std::os::raw::c_int,
+    offset: std::os::raw::c_int,
+    items: *mut SpotifySearchItem,
+    cap: std::os::raw::c_int,
+    total_out: *mut std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match check_library_args(player, items, cap, total_out) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if album.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null album".to_owned());
+    }
+    // SAFETY: null-checked; caller passes valid UTF-8 per header.
+    let id_text = match unsafe { CStr::from_ptr(album) }.to_str() {
+        Ok(s) => s.trim().to_owned(),
+        Err(_) => return fail(SPOTIFY_ERR_BAD_URI, "album is not valid UTF-8".to_owned()),
+    };
+    let id = match strip_id(&id_text, "spotify:album:") {
+        Ok(id) => id,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let limit_c = limit.clamp(1, 50) as i64;
+    let offset_c = offset.max(0) as i64;
+    let value = handle.rt.block_on(web_get(
+        handle,
+        &format!("/v1/albums/{id}/tracks"),
+        &[
+            ("limit", limit_c.to_string()),
+            ("offset", offset_c.to_string()),
+        ],
+    ));
+    let value = match value {
+        Ok(v) => v,
+        Err(SearchError::Unauthorized) => {
+            return fail(SPOTIFY_ERR_AUTH, "library unauthorized even after refresh".to_owned())
+        }
+        Err(SearchError::Auth(msg)) => return fail(SPOTIFY_ERR_AUTH, msg),
+        Err(SearchError::Other(msg)) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+    };
+    let total = value
+        .get("total")
+        .and_then(|t| t.as_u64())
+        .unwrap_or(0);
+    let mut raw: Vec<RawItem> = Vec::new();
+    if let Some(entries) = value.get("items").and_then(|i| i.as_array()) {
+        for track in entries {
+            map_track(&mut raw, track);
+        }
+    }
+    let count = fill_items(items, cap as usize, &mut raw);
+    write_total(total_out, total);
+    count as std::os::raw::c_int
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn spotify_get_volume(
     player: *mut SpotifyPlayer,
     out: *mut c_float,

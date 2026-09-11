@@ -209,6 +209,29 @@ bool Player::playlistTracks(const std::string& playlistIdOrUri, int limit, int o
     return copyLibraryItems(handle_, n, buf, out, totalRaw, total, lastError_);
 }
 
+bool Player::albums(int limit, int offset, std::vector<SearchResult>& out, int& total) {
+    out.clear();
+    total = 0;
+    SpotifySearchItem buf[50];
+    int totalRaw = 0;
+    const int n = spotify_albums(handle_, limit, offset, buf,
+                                 static_cast<int>(sizeof(buf) / sizeof(buf[0])),
+                                 &totalRaw);
+    return copyLibraryItems(handle_, n, buf, out, totalRaw, total, lastError_);
+}
+
+bool Player::albumTracks(const std::string& albumIdOrUri, int limit, int offset,
+                         std::vector<SearchResult>& out, int& total) {
+    out.clear();
+    total = 0;
+    SpotifySearchItem buf[50];
+    int totalRaw = 0;
+    const int n = spotify_album_tracks(handle_, albumIdOrUri.c_str(), limit, offset, buf,
+                                       static_cast<int>(sizeof(buf) / sizeof(buf[0])),
+                                       &totalRaw);
+    return copyLibraryItems(handle_, n, buf, out, totalRaw, total, lastError_);
+}
+
 bool Player::requestArtwork(const std::string& uri) {
     return callOk(spotify_request_artwork(handle_, uri.c_str()));
 }

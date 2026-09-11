@@ -196,6 +196,15 @@ int spotify_playlist_tracks(SpotifyPlayer* player, const char* playlist,
                             int limit, int offset, SpotifySearchItem* items,
                             int cap, int* total_out);
 
+// Saved albums page + tracks of one album (full URI or raw id). Unlike
+// playlist items, album tracks are NOT endpoint-restricted, so both use
+// the Web API with real totals.
+int spotify_albums(SpotifyPlayer* player, int limit, int offset,
+                   SpotifySearchItem* items, int cap, int* total_out);
+int spotify_album_tracks(SpotifyPlayer* player, const char* album,
+                         int limit, int offset, SpotifySearchItem* items,
+                         int cap, int* total_out);
+
 // Human-readable description of the last failure on the calling thread.
 // Never NULL. Pass NULL to read a creation-time failure.
 const char* spotify_last_error(const SpotifyPlayer* player);

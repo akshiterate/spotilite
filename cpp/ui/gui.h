@@ -23,7 +23,7 @@ public:
     int run();
 
 private:
-    enum class LibMode { LIKED, PLAYLISTS, PLAYLIST_TRACKS };
+    enum class LibMode { LIKED, PLAYLISTS, PLAYLIST_TRACKS, ALBUMS, ALBUM_TRACKS };
     void frame();
     void onTrackChanged(const std::string& uri);
     void pollMetadata();
@@ -64,7 +64,8 @@ private:
     int libTotal_ = 0;
     std::string libPlaylistId_;
     std::string libPlaylistName_;
-    int libPlPage_ = 0;
+    LibMode libBackMode_ = LibMode::PLAYLISTS;
+    int libBackPage_ = 0;
     int seekPosSec_ = 0;
     bool seekHeld_ = false;
     std::string lastUri_;

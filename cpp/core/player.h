@@ -88,6 +88,11 @@ public:
     bool previous();               // queue back + load; false at the start
     bool playCurrent();            // load queue current without resetting
     bool playFirst(const std::string& uri);  // insert at top + play, rest kept
+    // Saved albums page + tracks of one album (URI or raw id).
+    bool albums(int limit, int offset, std::vector<SearchResult>& out,
+                int& total);
+    bool albumTracks(const std::string& albumIdOrUri, int limit, int offset,
+                     std::vector<SearchResult>& out, int& total);
     void enqueue(const std::string& uri);
 
     // Drain one event into `out` and apply it to state(); true if an event
