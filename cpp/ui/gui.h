@@ -23,7 +23,7 @@ public:
     int run();
 
 private:
-    enum class LibMode { LIKED, PLAYLISTS, PLAYLIST_TRACKS, ALBUMS, ALBUM_TRACKS };
+    enum class LibMode { LIKED, PLAYLISTS, PLAYLIST_TRACKS, ALBUMS, ALBUM_TRACKS, ARTISTS, ARTIST_TRACKS };
     void frame();
     void onTrackChanged(const std::string& uri);
     void pollMetadata();

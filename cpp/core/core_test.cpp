@@ -242,6 +242,48 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Artists (Phase 10.4): followed list + top tracks of the first one.
+    // NOTE: needs the user-follow-read scope — older logins fail here with
+    // "Insufficient client scope" until re-authenticated (see summary).
+    {
+        const char* localAppData = std::getenv("LOCALAPPDATA");
+        const std::string webCache =
+            (localAppData ? localAppData : "") + std::string("\\spotilite\\cache\\webapi.json");
+        const bool haveLogin = std::getenv("SPOTILITE_CLIENT_ID") != nullptr ||
+                               std::ifstream(webCache).good();
+        std::vector<spotilite::SearchResult> lists;
+        int total = 0;
+        const bool ok = player.followedArtists(5, 0, lists, total);
+        if (haveLogin) {
+            check(ok, "followed artists", player.lastError());
+            if (ok && !lists.empty()) {
+                std::cout << "artist total: " << total << "\n";
+                for (const auto& r : lists) {
+                    std::cout << "artist: " << r.name << " <" << r.uri << ">\n";
+                }
+                std::vector<spotilite::SearchResult> tracks;
+                int trackTotal = 0;
+                const bool tok =
+                    player.artistTracks(lists[0].uri, 5, 0, tracks, trackTotal);
+                check(tok, "artist tracks", player.lastError());
+                if (tok) {
+                    check(!tracks.empty(), "artist has tracks");
+                    for (const auto& r : tracks) {
+                        std::cout << "artrack: " << r.name;
+                        if (!r.subtitle.empty()) {
+                            std::cout << " - " << r.subtitle;
+                        }
+                        std::cout << " <" << r.uri << ">\n";
+                    }
+                }
+            } else if (ok) {
+                std::cout << "note: no followed artists on this account\n";
+            }
+        } else {
+            check(!ok, "artists without login fails clean", player.lastError());
+        }
+    }
+
     if (argc > 1) {
         const std::string uri = argv[1];
         check(player.loadUri(uri), "load uri", player.lastError());

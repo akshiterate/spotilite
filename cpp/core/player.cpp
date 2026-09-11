@@ -232,6 +232,30 @@ bool Player::albumTracks(const std::string& albumIdOrUri, int limit, int offset,
     return copyLibraryItems(handle_, n, buf, out, totalRaw, total, lastError_);
 }
 
+bool Player::followedArtists(int limit, int offset, std::vector<SearchResult>& out,
+                             int& total) {
+    out.clear();
+    total = 0;
+    SpotifySearchItem buf[50];
+    int totalRaw = 0;
+    const int n = spotify_followed_artists(handle_, limit, offset, buf,
+                                           static_cast<int>(sizeof(buf) / sizeof(buf[0])),
+                                           &totalRaw);
+    return copyLibraryItems(handle_, n, buf, out, totalRaw, total, lastError_);
+}
+
+bool Player::artistTracks(const std::string& artistIdOrUri, int limit, int offset,
+                          std::vector<SearchResult>& out, int& total) {
+    out.clear();
+    total = 0;
+    SpotifySearchItem buf[50];
+    int totalRaw = 0;
+    const int n = spotify_artist_tracks(handle_, artistIdOrUri.c_str(), limit, offset, buf,
+                                        static_cast<int>(sizeof(buf) / sizeof(buf[0])),
+                                        &totalRaw);
+    return copyLibraryItems(handle_, n, buf, out, totalRaw, total, lastError_);
+}
+
 bool Player::requestArtwork(const std::string& uri) {
     return callOk(spotify_request_artwork(handle_, uri.c_str()));
 }

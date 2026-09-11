@@ -93,6 +93,11 @@ public:
                 int& total);
     bool albumTracks(const std::string& albumIdOrUri, int limit, int offset,
                      std::vector<SearchResult>& out, int& total);
+    // Followed artists page + top tracks of one artist (URI or raw id).
+    bool followedArtists(int limit, int offset, std::vector<SearchResult>& out,
+                         int& total);
+    bool artistTracks(const std::string& artistIdOrUri, int limit, int offset,
+                      std::vector<SearchResult>& out, int& total);
     void enqueue(const std::string& uri);
 
     // Drain one event into `out` and apply it to state(); true if an event

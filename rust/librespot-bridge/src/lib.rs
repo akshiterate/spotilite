@@ -931,9 +931,12 @@ const SPOTIFY_SEARCH_NAME_MAX: usize = 256;
 const SPOTIFY_SEARCH_SUBTITLE_MAX: usize = 256;
 
 const WEBAPI_REDIRECT: &str = "http://127.0.0.1:8898/login";
-// Search needs no scope; these two pre-cover the Phase 10 library so the
-// user logs in only once. Both are standard grants for custom apps.
-const WEBAPI_SCOPES: [&str; 2] = ["user-library-read", "playlist-read-private"];
+// Search needs no scope; the library ones pre-cover Phase 10 so one login
+// suffices. NOTE: adding a scope later requires a fresh browser login —
+// refresh keeps the originally granted set (seen live with
+// user-follow-read in 10.4).
+const WEBAPI_SCOPES: [&str; 3] =
+    ["user-library-read", "playlist-read-private", "user-follow-read"];
 const WEBAPI_CACHE_FILE: &str = "webapi.json";
 
 /// C layout twin of `SpotifySearchItem` (field order and types must match).
@@ -1050,6 +1053,31 @@ async fn web_get(
         if status.as_u16() == 401 {
             return Err(SearchError::Unauthorized);
         }
+        // Scope gap (e.g. a scope added after the user's login): re-login
+        // with the cached client id — no env needed — then retry once.
+        if status.as_u16() == 403
+            && attempt == 0
+            && text.contains("Insufficient client scope")
+        {
+            if let Some((client_id, _)) = read_web_cache() {
+                let _ = std::fs::remove_file(web_cache_path());
+                if let Ok(mut guard) = handle.web_token.lock() {
+                    *guard = None;
+                }
+                match browser_login(&client_id) {
+                    Ok(token) => {
+                        if !token.refresh_token.is_empty() {
+                            write_web_cache(&client_id, &token.refresh_token);
+                        }
+                        if let Ok(mut guard) = handle.web_token.lock() {
+                            *guard = Some(token);
+                        }
+                        continue;
+                    }
+                    Err(msg) => return Err(SearchError::Auth(msg)),
+                }
+            }
+        }
         if !status.is_success() {
             return Err(SearchError::Other(format!("http {status}: {text}")));
         }
@@ -1110,26 +1138,30 @@ fn push_tracks(out: &mut Vec<RawItem>, value: &Value) {
     }
 }
 
+fn map_artist(out: &mut Vec<RawItem>, item: &Value) {
+    let genres = item
+        .get("genres")
+        .and_then(|g| g.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|g| g.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    out.push(RawItem {
+        kind: SPOTIFY_SEARCH_ARTIST,
+        uri: str_field(item, "uri"),
+        name: str_field(item, "name"),
+        subtitle: genres,
+        duration_ms: 0,
+    });
+}
+
 fn push_artists(out: &mut Vec<RawItem>, value: &Value) {
     if let Some(items) = value.get("artists").and_then(|t| t.get("items")).and_then(|i| i.as_array()) {
         for item in items {
-            let genres = item
-                .get("genres")
-                .and_then(|g| g.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|g| g.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                })
-                .unwrap_or_default();
-            out.push(RawItem {
-                kind: SPOTIFY_SEARCH_ARTIST,
-                uri: str_field(item, "uri"),
-                name: str_field(item, "name"),
-                subtitle: genres,
-                duration_ms: 0,
-            });
+            map_artist(out, item);
         }
     }
 }
@@ -1384,6 +1416,55 @@ pub unsafe extern "C" fn spotify_playlists(
     count as std::os::raw::c_int
 }
 
+// First-page context tracks with concurrent metadata names. Shared by
+// playlist + artist drill-ins (Web API items are restricted for new apps).
+async fn context_track_items(
+    handle: &SpotifyPlayer,
+    context_uri: &str,
+    limit_c: usize,
+    offset_c: usize,
+) -> Result<Vec<RawItem>, String> {
+    let session = &handle.session;
+    let ctx = session
+        .spclient()
+        .get_context(context_uri)
+        .await
+        .map_err(|e| format!("context resolve: {e}"))?;
+    let uris: Vec<String> = ctx
+        .pages
+        .iter()
+        .flat_map(|page| page.tracks.iter())
+        .filter_map(|track| track.uri.clone())
+        .filter(|uri| !uri.is_empty())
+        .collect();
+    let page: Vec<String> = uris.into_iter().skip(offset_c).take(limit_c).collect();
+    let metas = futures_util::future::join_all(page.iter().map(|uri_text| async {
+        let parsed = match SpotifyUri::from_uri(uri_text).ok() {
+            // Tracks and episodes both play; anything else is skipped.
+            Some(p @ SpotifyUri::Track { .. }) | Some(p @ SpotifyUri::Episode { .. }) => p,
+            _ => return None,
+        };
+        let meta = fetch_metadata(session, &parsed).await.ok()?;
+        Some((parsed, meta))
+    }))
+    .await;
+    let mut raw: Vec<RawItem> = Vec::new();
+    for entry in metas.into_iter().flatten() {
+        let (parsed, meta) = entry;
+        // Tracks and episodes both play through loadUri; the kind flag
+        // only gates the GUI play button, so both map to TRACK here.
+        let _ = parsed;
+        raw.push(RawItem {
+            kind: SPOTIFY_SEARCH_TRACK,
+            uri: meta.uri,
+            name: meta.title,
+            subtitle: meta.artist,
+            duration_ms: meta.duration_ms,
+        });
+    }
+    Ok(raw)
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn spotify_playlist_tracks(
     player: *mut SpotifyPlayer,
@@ -1419,56 +1500,15 @@ pub unsafe extern "C" fn spotify_playlist_tracks(
     // attach names with concurrent metadata fetches.
     let limit_c = (limit.clamp(1, 50) as usize).min(cap as usize);
     let offset_c = offset.max(0) as usize;
-    let uris: Vec<String> = match handle.rt.block_on(async {
-        let ctx = handle
-            .session
-            .spclient()
-            .get_context(&format!("spotify:playlist:{id}"))
-            .await
-            .map_err(|e| format!("playlist context: {e}"))?;
-        Ok::<_, String>(
-            ctx.pages
-                .iter()
-                .flat_map(|page| page.tracks.iter())
-                .filter_map(|track| track.uri.clone())
-                .filter(|uri| !uri.is_empty())
-                .collect(),
-        )
-    }) {
-        Ok(v) => v,
+    let mut raw = match handle.rt.block_on(context_track_items(
+        handle,
+        &format!("spotify:playlist:{id}"),
+        limit_c,
+        offset_c,
+    )) {
+        Ok(r) => r,
         Err(msg) => return fail(SPOTIFY_ERR_INTERNAL, msg),
     };
-    let page: Vec<String> = uris
-        .into_iter()
-        .skip(offset_c)
-        .take(limit_c)
-        .collect();
-    let metas = handle.rt.block_on(futures_util::future::join_all(
-        page.iter().map(|uri_text| async {
-            let parsed = match SpotifyUri::from_uri(uri_text).ok() {
-                // Tracks and episodes both play; anything else is skipped.
-                Some(p @ SpotifyUri::Track { .. })
-                | Some(p @ SpotifyUri::Episode { .. }) => p,
-                _ => return None,
-            };
-            let meta = fetch_metadata(&handle.session, &parsed).await.ok()?;
-            Some((parsed, meta))
-        }),
-    ));
-    let mut raw: Vec<RawItem> = Vec::new();
-    for entry in metas.into_iter().flatten() {
-        let (parsed, meta) = entry;
-        // Tracks and episodes both play through loadUri; the kind flag
-        // only gates the GUI play button, so both map to TRACK here.
-        let _ = parsed;
-        raw.push(RawItem {
-            kind: SPOTIFY_SEARCH_TRACK,
-            uri: meta.uri,
-            name: meta.title,
-            subtitle: meta.artist,
-            duration_ms: meta.duration_ms,
-        });
-    }
     let count = fill_items(items, cap as usize, &mut raw);
     // Total track count isn't exposed by first-page context resolution.
     // SAFETY: null-checked above; caller provides storage.
@@ -1619,6 +1659,131 @@ pub unsafe extern "C" fn spotify_album_tracks(
     }
     let count = fill_items(items, cap as usize, &mut raw);
     write_total(total_out, total);
+    count as std::os::raw::c_int
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_followed_artists(
+    player: *mut SpotifyPlayer,
+    limit: std::os::raw::c_int,
+    offset: std::os::raw::c_int,
+    items: *mut SpotifySearchItem,
+    cap: std::os::raw::c_int,
+    total_out: *mut std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match check_library_args(player, items, cap, total_out) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    // Followed-artists paging is cursor-based (`after`), so numeric offsets
+    // walk fixed 50-pages forward. Offsets stay small in practice.
+    let limit_c = (limit.clamp(1, 50) as usize).min(cap as usize);
+    let mut skip = offset.max(0) as usize;
+    let mut after = String::new();
+    let mut last_after = String::from("\0");
+    let (mut raw, mut total) = (Vec::new(), 0u64);
+    for _ in 0..32 {
+        let mut params = vec![
+            ("type", "artist".to_owned()),
+            ("limit", "50".to_owned()),
+        ];
+        if !after.is_empty() {
+            params.push(("after", after.clone()));
+        }
+        let value = match handle.rt.block_on(web_get(handle, "/v1/me/following", &params)) {
+            Ok(v) => v,
+            Err(SearchError::Unauthorized) => {
+                return fail(SPOTIFY_ERR_AUTH, "library unauthorized even after refresh".to_owned())
+            }
+            Err(SearchError::Auth(msg)) => return fail(SPOTIFY_ERR_AUTH, msg),
+            Err(SearchError::Other(msg)) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+        };
+        let artists = match value.get("artists") {
+            Some(a) => a,
+            None => break,
+        };
+        total = artists
+            .get("total")
+            .and_then(|t| t.as_u64())
+            .unwrap_or(0);
+        let entries: Vec<&Value> = artists
+            .get("items")
+            .and_then(|i| i.as_array())
+            .map(|arr| arr.iter().collect())
+            .unwrap_or_default();
+        if entries.is_empty() {
+            break;
+        }
+        if skip >= entries.len() {
+            skip -= entries.len();
+            let next = artists
+                .get("cursors")
+                .and_then(|c| c.get("after"))
+                .and_then(|a| a.as_str())
+                .map(str::to_owned)
+                .filter(|s| !s.is_empty())
+                .or_else(|| entries.last().map(|e| str_field(e, "id")));
+            match next {
+                Some(cursor) if cursor != last_after => {
+                    last_after = after.clone();
+                    after = cursor;
+                    continue;
+                }
+                _ => break,
+            }
+        }
+        for entry in entries.iter().skip(skip).take(limit_c) {
+            map_artist(&mut raw, entry);
+        }
+        break;
+    }
+    let count = fill_items(items, cap as usize, &mut raw);
+    write_total(total_out, total);
+    count as std::os::raw::c_int
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_artist_tracks(
+    player: *mut SpotifyPlayer,
+    artist: *const c_char,
+    limit: std::os::raw::c_int,
+    offset: std::os::raw::c_int,
+    items: *mut SpotifySearchItem,
+    cap: std::os::raw::c_int,
+    total_out: *mut std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match check_library_args(player, items, cap, total_out) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if artist.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null artist".to_owned());
+    }
+    // SAFETY: null-checked; caller passes valid UTF-8 per header.
+    let id_text = match unsafe { CStr::from_ptr(artist) }.to_str() {
+        Ok(s) => s.trim().to_owned(),
+        Err(_) => return fail(SPOTIFY_ERR_BAD_URI, "artist is not valid UTF-8".to_owned()),
+    };
+    let id = match strip_id(&id_text, "spotify:artist:") {
+        Ok(id) => id,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let limit_c = (limit.clamp(1, 50) as usize).min(cap as usize);
+    let offset_c = offset.max(0) as usize;
+    let mut raw = match handle.rt.block_on(context_track_items(
+        handle,
+        &format!("spotify:artist:{id}"),
+        limit_c,
+        offset_c,
+    )) {
+        Ok(r) => r,
+        Err(msg) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+    };
+    let count = fill_items(items, cap as usize, &mut raw);
+    // SAFETY: null-checked above; caller provides storage.
+    unsafe {
+        *total_out = -1;
+    }
     count as std::os::raw::c_int
 }
 

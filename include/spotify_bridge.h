@@ -205,6 +205,17 @@ int spotify_album_tracks(SpotifyPlayer* player, const char* album,
                          int limit, int offset, SpotifySearchItem* items,
                          int cap, int* total_out);
 
+// Followed artists page (cursor-walked internally; same paging contract).
+// Needs the user-follow-read scope: older logins must re-authenticate
+// once (delete the cached webapi.json and search again).
+int spotify_followed_artists(SpotifyPlayer* player, int limit, int offset,
+                             SpotifySearchItem* items, int cap, int* total_out);
+// Top tracks of one artist (full URI or raw id) via context resolution,
+// first page only, total -1 like playlist tracks.
+int spotify_artist_tracks(SpotifyPlayer* player, const char* artist,
+                          int limit, int offset, SpotifySearchItem* items,
+                          int cap, int* total_out);
+
 // Human-readable description of the last failure on the calling thread.
 // Never NULL. Pass NULL to read a creation-time failure.
 const char* spotify_last_error(const SpotifyPlayer* player);
