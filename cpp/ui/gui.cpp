@@ -260,7 +260,7 @@ bool Gui::playSelected() {
     if (!player_.queue().select(static_cast<std::size_t>(i))) {
         return false;
     }
-    return player_.loadUri(player_.queue().current());
+    return player_.playCurrent();
 }
 
 void Gui::pollSearch() {
@@ -347,6 +347,43 @@ void Gui::frame() {
     if (ImGui::Button("Play selected") && !playSelected()) {
         error_ = player_.lastError();
     }
+    ImGui::SameLine();
+    if (ImGui::Button("Add URI")) {
+        if (uriBuf_[0] == '\0') {
+            error_ = "type a URI above first";
+        } else {
+            player_.enqueue(uriBuf_);
+            uriBuf_[0] = '\0';
+            error_.clear();
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Del")) {
+        const std::size_t row =
+            queueSel_ < 0 ? 0 : static_cast<std::size_t>(queueSel_);
+        if (!player_.queue().removeAt(row)) {
+            error_ = "nothing to delete";
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Up")) {
+        const int from = queueSel_;
+        if (from > 0 &&
+            player_.queue().move(static_cast<std::size_t>(from),
+                                 static_cast<std::size_t>(from - 1))) {
+            queueSel_ = from - 1;
+        }
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Down")) {
+        const int from = queueSel_;
+        if (from >= 0 &&
+            static_cast<std::size_t>(from + 1) < player_.queue().size() &&
+            player_.queue().move(static_cast<std::size_t>(from),
+                                 static_cast<std::size_t>(from + 1))) {
+            queueSel_ = from + 1;
+        }
+    }
 
     // 8. Web API search + results (tracks playable, other rows display).
     ImGui::InputText("Search", searchBuf_, sizeof(searchBuf_));
@@ -381,6 +418,16 @@ void Gui::frame() {
     ImGui::SameLine();
     if (ImGui::Button("Play result")) {
         playSearchResult();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Add to queue")) {
+        if (searchSel_ < 0 ||
+            static_cast<std::size_t>(searchSel_) >= searchResults_.size()) {
+            error_ = "nothing selected";
+        } else {
+            player_.enqueue(searchResults_[static_cast<std::size_t>(searchSel_)].uri);
+            error_.clear();
+        }
     }
 
     // 3+7. Current track + small artwork.

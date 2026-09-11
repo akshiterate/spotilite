@@ -196,6 +196,17 @@ int main(int argc, char** argv) {
 
         check(player.setVolume(0.4f), "volume 0.4", player.lastError());
         watch(player, 2, "after volume");
+
+        // Optional second URI: playback must follow queue navigation.
+        if (argc > 2) {
+            const std::string uri2 = argv[2];
+            player.enqueue(uri2);
+            check(player.next(), "queue next loads", player.lastError());
+            check(player.state().currentUri == uri2, "playback followed queue");
+            watch(player, 4, "second track");
+            check(player.previous(), "queue previous loads", player.lastError());
+            check(player.state().currentUri == uri, "playback back on first");
+        }
     }
 
     // Queue logic (no playback needed). Start from empty: loadUri() above
@@ -214,8 +225,31 @@ int main(int argc, char** argv) {
           "queue select");
     check(!player.queue().next(), "queue next at end fails");
 
+    // Phase 9: remove + reorder (pure logic).
+    check(player.queue().select(0), "queue reselect for remove test");
+    check(player.queue().removeAt(1), "queue remove middle");
+    check(player.queue().size() == 2, "queue size after remove");
+    check(player.queue().current() == "spotify:track:aaa", "queue current stable");
+    check(!player.queue().removeAt(9), "queue remove out of range fails");
+    player.queue().clear();
+    player.enqueue("spotify:track:aaa");
+    player.enqueue("spotify:track:bbb");
+    player.enqueue("spotify:track:ccc");
+    check(player.queue().select(0), "queue reselect head");
+    check(player.queue().move(0, 2), "queue move head to tail");
+    check(player.queue().at(0) == "spotify:track:bbb" &&
+              player.queue().at(2) == "spotify:track:aaa",
+          "queue order after move");
+    check(player.queue().current() == "spotify:track:aaa", "queue current follows move");
+    check(!player.queue().move(9, 0), "queue move out of range fails");
+
     // Player-level next/previous wire queue navigation into bridge loads.
     // Dummy URIs fail at the bridge, which proves the call chain reaches it.
+    // Rebuild the canonical order first (move tests above reordered it).
+    player.queue().clear();
+    player.enqueue("spotify:track:aaa");
+    player.enqueue("spotify:track:bbb");
+    player.enqueue("spotify:track:ccc");
     player.queue().select(1);
     check(!player.previous(), "player previous reaches bridge", player.lastError());
     check(player.queue().current() == "spotify:track:aaa", "previous advanced queue");

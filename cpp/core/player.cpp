@@ -31,11 +31,20 @@ bool Player::connect() {
 }
 
 bool Player::loadUri(const std::string& uri) {
+    queue_.clear();
+    queue_.add(uri);
+    return loadCurrent();
+}
+
+bool Player::loadCurrent() {
+    const std::string uri = queue_.current();
+    if (uri.empty()) {
+        lastError_ = "queue is empty";
+        return false;
+    }
     if (!callOk(spotify_load_uri(handle_, uri.c_str()))) {
         return false;
     }
-    queue_.clear();
-    queue_.add(uri);
     state_.currentUri = uri;
     state_.playing = true;  // optimistic; events confirm/correct it
     state_.positionMs = 0;
@@ -135,7 +144,7 @@ bool Player::next() {
         lastError_ = "at end of queue";
         return false;
     }
-    return loadUri(queue_.current());
+    return loadCurrent();
 }
 
 bool Player::previous() {
@@ -143,8 +152,10 @@ bool Player::previous() {
         lastError_ = "at start of queue";
         return false;
     }
-    return loadUri(queue_.current());
+    return loadCurrent();
 }
+
+bool Player::playCurrent() { return loadCurrent(); }
 
 void Player::enqueue(const std::string& uri) { queue_.add(uri); }
 

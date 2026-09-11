@@ -57,6 +57,53 @@ public:
         return false;
     }
 
+    // Erase row i; false when out of range. The current index follows its
+    // track: rows before it shift it down, erasing it keeps the position
+    // (now the next track), clamped at the end. Playback itself is
+    // untouched — removing the playing track does not stop it.
+    bool removeAt(std::size_t i) {
+        if (i >= uris_.size()) {
+            return false;
+        }
+        uris_.erase(uris_.begin() + static_cast<std::ptrdiff_t>(i));
+        if (uris_.empty()) {
+            index_ = 0;
+            return true;
+        }
+        if (i < index_) {
+            --index_;
+        } else if (index_ >= uris_.size()) {
+            index_ = uris_.size() - 1;
+        }
+        return true;
+    }
+
+    // Move row `from` to position `to` (`to` clamped to the end); the
+    // current index re-resolves onto the same track. False when `from`
+    // is out of range.
+    bool move(std::size_t from, std::size_t to) {
+        if (from >= uris_.size()) {
+            return false;
+        }
+        if (to >= uris_.size()) {
+            to = uris_.size() - 1;
+        }
+        if (from == to) {
+            return true;
+        }
+        const std::string currentTrack = current();
+        std::string uri = uris_[from];
+        uris_.erase(uris_.begin() + static_cast<std::ptrdiff_t>(from));
+        uris_.insert(uris_.begin() + static_cast<std::ptrdiff_t>(to), uri);
+        for (std::size_t k = 0; k < uris_.size(); ++k) {
+            if (uris_[k] == currentTrack) {
+                index_ = k;
+                break;
+            }
+        }
+        return true;
+    }
+
 private:
     std::vector<std::string> uris_;
     std::size_t index_ = 0;

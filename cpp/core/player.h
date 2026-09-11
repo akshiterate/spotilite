@@ -78,6 +78,7 @@ public:
     std::string artworkPath(const std::string& uri, int size);  // "" on failure
     bool next();                   // queue forward + load; false at the end
     bool previous();               // queue back + load; false at the start
+    bool playCurrent();            // load queue current without resetting
     void enqueue(const std::string& uri);
 
     // Drain one event into `out` and apply it to state(); true if an event
@@ -92,6 +93,7 @@ public:
 
 private:
     bool callOk(int rc);
+    bool loadCurrent();  // load queue_.current(), queue untouched
     void applyEvent(const PlayerEvent& event);
 
     SpotifyPlayer* handle_ = nullptr;
