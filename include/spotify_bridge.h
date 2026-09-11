@@ -186,6 +186,16 @@ int spotify_search(SpotifyPlayer* player, const char* query, int types,
 int spotify_liked_tracks(SpotifyPlayer* player, int limit, int offset,
                          SpotifySearchItem* items, int cap, int* total_out);
 
+// Own playlists page (same paging contract). Subtitle carries owner.
+int spotify_playlists(SpotifyPlayer* player, int limit, int offset,
+                      SpotifySearchItem* items, int cap, int* total_out);
+
+// Tracks of one playlist (full URI or raw id; limit 1..50). Same item
+// shape as liked tracks.
+int spotify_playlist_tracks(SpotifyPlayer* player, const char* playlist,
+                            int limit, int offset, SpotifySearchItem* items,
+                            int cap, int* total_out);
+
 // Human-readable description of the last failure on the calling thread.
 // Never NULL. Pass NULL to read a creation-time failure.
 const char* spotify_last_error(const SpotifyPlayer* player);

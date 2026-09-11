@@ -76,6 +76,11 @@ public:
     // Liked Songs page (blocking network). Total = full library size.
     bool likedTracks(int limit, int offset, std::vector<SearchResult>& out,
                      int& total);
+    // Own playlists page + tracks of one playlist (URI or raw id).
+    bool playlists(int limit, int offset, std::vector<SearchResult>& out,
+                   int& total);
+    bool playlistTracks(const std::string& playlistIdOrUri, int limit, int offset,
+                        std::vector<SearchResult>& out, int& total);
     bool requestArtwork(const std::string& uri);  // background fetch, idempotent
     bool artworkReady(const std::string& uri, int size);  // cached? size: 128/256
     std::string artworkPath(const std::string& uri, int size);  // "" on failure

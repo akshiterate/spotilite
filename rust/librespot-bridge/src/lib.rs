@@ -1326,6 +1326,182 @@ pub unsafe extern "C" fn spotify_liked_tracks(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn spotify_playlists(
+    player: *mut SpotifyPlayer,
+    limit: std::os::raw::c_int,
+    offset: std::os::raw::c_int,
+    items: *mut SpotifySearchItem,
+    cap: std::os::raw::c_int,
+    total_out: *mut std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match check_library_args(player, items, cap, total_out) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let limit_c = limit.clamp(1, 50) as i64;
+    let offset_c = offset.max(0) as i64;
+    let value = handle.rt.block_on(web_get(
+        handle,
+        "/v1/me/playlists",
+        &[
+            ("limit", limit_c.to_string()),
+            ("offset", offset_c.to_string()),
+        ],
+    ));
+    let value = match value {
+        Ok(v) => v,
+        Err(SearchError::Unauthorized) => {
+            return fail(SPOTIFY_ERR_AUTH, "library unauthorized even after refresh".to_owned())
+        }
+        Err(SearchError::Auth(msg)) => return fail(SPOTIFY_ERR_AUTH, msg),
+        Err(SearchError::Other(msg)) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+    };
+    let total = value
+        .get("total")
+        .and_then(|t| t.as_u64())
+        .unwrap_or(0);
+    let mut raw: Vec<RawItem> = Vec::new();
+    if let Some(entries) = value.get("items").and_then(|i| i.as_array()) {
+        for entry in entries {
+            let owner = entry
+                .get("owner")
+                .map(|o| str_field(o, "display_name"))
+                .unwrap_or_default();
+            // NOTE: per-playlist tracks.total reads 0 for new apps, so no
+            // count is shown (observed live; cause unclear, likely related
+            // to the items-endpoint restriction below).
+            raw.push(RawItem {
+                kind: SPOTIFY_SEARCH_PLAYLIST,
+                uri: str_field(entry, "uri"),
+                name: str_field(entry, "name"),
+                subtitle: owner,
+                duration_ms: 0,
+            });
+        }
+    }
+    let count = fill_items(items, cap as usize, &mut raw);
+    write_total(total_out, total);
+    count as std::os::raw::c_int
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_playlist_tracks(
+    player: *mut SpotifyPlayer,
+    playlist: *const c_char,
+    limit: std::os::raw::c_int,
+    offset: std::os::raw::c_int,
+    items: *mut SpotifySearchItem,
+    cap: std::os::raw::c_int,
+    total_out: *mut std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match check_library_args(player, items, cap, total_out) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if playlist.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null playlist".to_owned());
+    }
+    // SAFETY: null-checked; caller passes valid UTF-8 per header.
+    let id_text = match unsafe { CStr::from_ptr(playlist) }.to_str() {
+        Ok(s) => s.trim().to_owned(),
+        Err(_) => return fail(SPOTIFY_ERR_BAD_URI, "playlist is not valid UTF-8".to_owned()),
+    };
+    let id = id_text
+        .strip_prefix("spotify:playlist:")
+        .unwrap_or(&id_text)
+        .to_owned();
+    if id.is_empty() {
+        return fail(SPOTIFY_ERR_BAD_URI, "empty playlist id".to_owned());
+    }
+    // Playlist ITEMS are not fetchable via Web API for new apps (robust
+    // 403s even for own playlists). Resolve through librespot's own
+    // context machinery instead (same source Spirc plays from), then
+    // attach names with concurrent metadata fetches.
+    let limit_c = (limit.clamp(1, 50) as usize).min(cap as usize);
+    let offset_c = offset.max(0) as usize;
+    let uris: Vec<String> = match handle.rt.block_on(async {
+        let ctx = handle
+            .session
+            .spclient()
+            .get_context(&format!("spotify:playlist:{id}"))
+            .await
+            .map_err(|e| format!("playlist context: {e}"))?;
+        Ok::<_, String>(
+            ctx.pages
+                .iter()
+                .flat_map(|page| page.tracks.iter())
+                .filter_map(|track| track.uri.clone())
+                .filter(|uri| !uri.is_empty())
+                .collect(),
+        )
+    }) {
+        Ok(v) => v,
+        Err(msg) => return fail(SPOTIFY_ERR_INTERNAL, msg),
+    };
+    let page: Vec<String> = uris
+        .into_iter()
+        .skip(offset_c)
+        .take(limit_c)
+        .collect();
+    let metas = handle.rt.block_on(futures_util::future::join_all(
+        page.iter().map(|uri_text| async {
+            let parsed = match SpotifyUri::from_uri(uri_text).ok() {
+                // Tracks and episodes both play; anything else is skipped.
+                Some(p @ SpotifyUri::Track { .. })
+                | Some(p @ SpotifyUri::Episode { .. }) => p,
+                _ => return None,
+            };
+            let meta = fetch_metadata(&handle.session, &parsed).await.ok()?;
+            Some((parsed, meta))
+        }),
+    ));
+    let mut raw: Vec<RawItem> = Vec::new();
+    for entry in metas.into_iter().flatten() {
+        let (parsed, meta) = entry;
+        // Tracks and episodes both play through loadUri; the kind flag
+        // only gates the GUI play button, so both map to TRACK here.
+        let _ = parsed;
+        raw.push(RawItem {
+            kind: SPOTIFY_SEARCH_TRACK,
+            uri: meta.uri,
+            name: meta.title,
+            subtitle: meta.artist,
+            duration_ms: meta.duration_ms,
+        });
+    }
+    let count = fill_items(items, cap as usize, &mut raw);
+    // Total track count isn't exposed by first-page context resolution.
+    // SAFETY: null-checked above; caller provides storage.
+    unsafe {
+        *total_out = -1;
+    }
+    count as std::os::raw::c_int
+}
+
+fn check_library_args<'a>(
+    player: *mut SpotifyPlayer,
+    items: *mut SpotifySearchItem,
+    cap: std::os::raw::c_int,
+    total_out: *mut std::os::raw::c_int,
+) -> Result<&'a SpotifyPlayer, (std::os::raw::c_int, String)> {
+    let handle = handle_ref(player)?;
+    if let Err(e) = check_connected(handle) {
+        return Err(e);
+    }
+    if items.is_null() || cap <= 0 || total_out.is_null() {
+        return Err((SPOTIFY_ERR_NULL_ARG, "null items/total buffer".to_owned()));
+    }
+    Ok(handle)
+}
+
+fn write_total(total_out: *mut std::os::raw::c_int, total: u64) {
+    // SAFETY: null-checked by callers; caller provides storage.
+    unsafe {
+        *total_out = total.min(i32::MAX as u64) as std::os::raw::c_int;
+    }
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn spotify_get_volume(
     player: *mut SpotifyPlayer,
     out: *mut c_float,

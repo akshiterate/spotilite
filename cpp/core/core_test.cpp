@@ -158,6 +158,48 @@ int main(int argc, char** argv) {
         }
     }
 
+    // Playlists (Phase 10.2): list + drill into the first one.
+    {
+        const char* localAppData = std::getenv("LOCALAPPDATA");
+        const std::string webCache =
+            (localAppData ? localAppData : "") + std::string("\\spotilite\\cache\\webapi.json");
+        const bool haveLogin = std::getenv("SPOTILITE_CLIENT_ID") != nullptr ||
+                               std::ifstream(webCache).good();
+        std::vector<spotilite::SearchResult> lists;
+        int total = 0;
+        const bool ok = player.playlists(5, 0, lists, total);
+        if (haveLogin) {
+            check(ok, "playlists", player.lastError());
+            if (ok && !lists.empty()) {
+                std::cout << "playlist total: " << total << "\n";
+                for (const auto& r : lists) {
+                    std::cout << "playlist: " << r.name << " - " << r.subtitle
+                              << " <" << r.uri << ">\n";
+                }
+                std::vector<spotilite::SearchResult> tracks;
+                int trackTotal = 0;
+                const bool tok =
+                    player.playlistTracks(lists[0].uri, 5, 0, tracks, trackTotal);
+                check(tok, "playlist tracks", player.lastError());
+                if (tok) {
+                    std::cout << "playlist tracks total: " << trackTotal << "\n";
+                    check(!tracks.empty(), "playlist has tracks");
+                    for (const auto& r : tracks) {
+                        std::cout << "pltrack: " << r.name;
+                        if (!r.subtitle.empty()) {
+                            std::cout << " - " << r.subtitle;
+                        }
+                        std::cout << " <" << r.uri << ">\n";
+                    }
+                }
+            } else if (ok) {
+                std::cout << "note: no playlists on this account\n";
+            }
+        } else {
+            check(!ok, "playlists without login fails clean", player.lastError());
+        }
+    }
+
     if (argc > 1) {
         const std::string uri = argv[1];
         check(player.loadUri(uri), "load uri", player.lastError());

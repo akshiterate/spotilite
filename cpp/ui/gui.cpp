@@ -300,47 +300,70 @@ bool Gui::playSearchResult() {
     return true;
 }
 
-void Gui::fetchLiked(int page) {
+void Gui::fetchLibrary(LibMode mode, int page, const std::string& playlistId,
+                      const std::string& playlistName) {
     if (page < 0) {
         return;
     }
-    pendingLiked_.active = true;
-    pendingLiked_.page = page;
-    pendingLiked_.future = std::async(std::launch::async, [this, page] {
+    pendingLib_.active = true;
+    pendingLib_.mode = mode;
+    pendingLib_.page = page;
+    pendingLib_.playlistId = playlistId;
+    pendingLib_.playlistName = playlistName;
+    pendingLib_.future = std::async(std::launch::async, [this, mode, page, playlistId] {
         std::tuple<std::vector<SearchResult>, int, std::string> out;
         std::vector<SearchResult>& rows = std::get<0>(out);
-        if (!player_.likedTracks(20, page * 20, rows, std::get<1>(out))) {
+        bool ok = false;
+        if (mode == LibMode::LIKED) {
+            ok = player_.likedTracks(20, page * 20, rows, std::get<1>(out));
+        } else if (mode == LibMode::PLAYLISTS) {
+            ok = player_.playlists(20, page * 20, rows, std::get<1>(out));
+        } else {
+            ok = player_.playlistTracks(playlistId, 20, page * 20, rows, std::get<1>(out));
+        }
+        if (!ok) {
             std::get<2>(out) = player_.lastError();
         }
         return out;
     });
 }
 
-void Gui::pollLiked() {
-    if (!pendingLiked_.active) {
+void Gui::pollLibrary() {
+    if (!pendingLib_.active) {
         return;
     }
-    if (pendingLiked_.future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+    if (pendingLib_.future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
         return;
     }
-    pendingLiked_.active = false;
-    auto [rows, total, error] = pendingLiked_.future.get();
+    pendingLib_.active = false;
+    auto [rows, total, error] = pendingLib_.future.get();
     if (!error.empty() && rows.empty()) {
         error_ = error;
         return;
     }
-    likedResults_ = std::move(rows);
-    likedTotal_ = total;
-    likedPage_ = pendingLiked_.page;
-    likedSel_ = 0;
+    libResults_ = std::move(rows);
+    libTotal_ = total;
+    libMode_ = pendingLib_.mode;
+    libPage_ = pendingLib_.page;
+    libPlaylistId_ = pendingLib_.playlistId;
+    libPlaylistName_ = pendingLib_.playlistName;
+    libSel_ = 0;
     error_.clear();
 }
 
-bool Gui::playLikedResult() {
-    if (likedSel_ < 0 || static_cast<std::size_t>(likedSel_) >= likedResults_.size()) {
+bool Gui::playLibraryResult() {
+    if (libSel_ < 0 || static_cast<std::size_t>(libSel_) >= libResults_.size()) {
         return false;
     }
-    const SearchResult& item = likedResults_[static_cast<std::size_t>(likedSel_)];
+    if (libMode_ == LibMode::PLAYLISTS) {
+        // Drill into the playlist instead of playing it.
+        const SearchResult& item =
+            libResults_[static_cast<std::size_t>(libSel_)];
+        libPlPage_ = libPage_;
+        fetchLibrary(LibMode::PLAYLIST_TRACKS, 0, item.uri, item.name);
+        return true;
+    }
+    const SearchResult& item = libResults_[static_cast<std::size_t>(libSel_)];
     if (!player_.playFirst(item.uri)) {
         error_ = player_.lastError();
         return false;
@@ -489,48 +512,64 @@ void Gui::frame() {
         }
     }
 
-    // 10.1 Liked Songs (paged library; 20 rows per page).
+    // 10. Library (Liked Songs + Playlists with track drill-in; paged).
     if (ImGui::Button("Liked")) {
-        fetchLiked(0);
+        fetchLibrary(LibMode::LIKED, 0, "", "");
     }
     ImGui::SameLine();
-    if (ImGui::Button("<##liked") && likedPage_ > 0) {
-        fetchLiked(likedPage_ - 1);
+    if (ImGui::Button("Playlists")) {
+        fetchLibrary(LibMode::PLAYLISTS, 0, "", "");
     }
     ImGui::SameLine();
-    if (ImGui::Button(">##liked")) {
-        fetchLiked(likedPage_ + 1);
+    if (ImGui::Button("<##lib") && libPage_ > 0) {
+        fetchLibrary(libMode_, libPage_ - 1, libPlaylistId_, libPlaylistName_);
     }
     ImGui::SameLine();
-    ImGui::Text("page %d of %d", likedPage_ + 1, likedTotal_ / 20 + 1);
-    pollLiked();
-    std::vector<std::string> likedText;
-    for (const auto& r : likedResults_) {
-        likedText.push_back(r.subtitle.empty() ? r.name : r.name + " - " + r.subtitle);
+    if (ImGui::Button(">##lib") && (libTotal_ < 0 || (libPage_ + 1) * 20 < libTotal_)) {
+        fetchLibrary(libMode_, libPage_ + 1, libPlaylistId_, libPlaylistName_);
     }
-    std::vector<const char*> likedRows;
-    for (const auto& t : likedText) {
-        likedRows.push_back(t.c_str());
+    ImGui::SameLine();
+    if (libMode_ == LibMode::PLAYLIST_TRACKS) {
+        ImGui::Text("%s", libPlaylistName_.c_str());
+        ImGui::SameLine();
+        if (ImGui::Button("Back")) {
+            fetchLibrary(LibMode::PLAYLISTS, libPlPage_, "", "");
+        }
+    } else if (libTotal_ >= 0) {
+        ImGui::Text("page %d of %d", libPage_ + 1, libTotal_ / 20 + 1);
+    } else {
+        ImGui::Text("page %d", libPage_ + 1);
     }
-    if (likedSel_ >= static_cast<int>(likedRows.size())) {
-        likedSel_ = static_cast<int>(likedRows.size()) - 1;
+    pollLibrary();
+    std::vector<std::string> libText;
+    for (const auto& r : libResults_) {
+        libText.push_back(r.subtitle.empty() ? r.name : r.name + " - " + r.subtitle);
     }
-    if (likedSel_ < 0 && !likedRows.empty()) {
-        likedSel_ = 0;
+    std::vector<const char*> libRows;
+    for (const auto& t : libText) {
+        libRows.push_back(t.c_str());
     }
-    ImGui::ListBox("##liked", &likedSel_, likedRows.data(), static_cast<int>(likedRows.size()),
+    if (libSel_ >= static_cast<int>(libRows.size())) {
+        libSel_ = static_cast<int>(libRows.size()) - 1;
+    }
+    if (libSel_ < 0 && !libRows.empty()) {
+        libSel_ = 0;
+    }
+    ImGui::ListBox("##library", &libSel_, libRows.data(), static_cast<int>(libRows.size()),
                    6);
     ImGui::SameLine();
-    if (ImGui::Button("Play liked")) {
-        playLikedResult();
+    if (ImGui::Button("Play")) {
+        playLibraryResult();
     }
     ImGui::SameLine();
-    if (ImGui::Button("Add liked")) {
-        if (likedSel_ < 0 ||
-            static_cast<std::size_t>(likedSel_) >= likedResults_.size()) {
+    if (ImGui::Button("Add")) {
+        if (libMode_ == LibMode::PLAYLISTS) {
+            error_ = "open the playlist to add tracks";
+        } else if (libSel_ < 0 ||
+                   static_cast<std::size_t>(libSel_) >= libResults_.size()) {
             error_ = "nothing selected";
         } else {
-            player_.enqueue(likedResults_[static_cast<std::size_t>(likedSel_)].uri);
+            player_.enqueue(libResults_[static_cast<std::size_t>(libSel_)].uri);
             error_.clear();
         }
     }

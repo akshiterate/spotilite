@@ -23,14 +23,16 @@ public:
     int run();
 
 private:
+    enum class LibMode { LIKED, PLAYLISTS, PLAYLIST_TRACKS };
     void frame();
     void onTrackChanged(const std::string& uri);
     void pollMetadata();
     void pollSearch();
     bool playSearchResult();
-    void fetchLiked(int page);
-    void pollLiked();
-    bool playLikedResult();
+    void fetchLibrary(LibMode mode, int page, const std::string& playlistId,
+                      const std::string& playlistName);
+    void pollLibrary();
+    bool playLibraryResult();
     bool loadArtTexture(const std::string& path);
     void releaseArtTexture();
     bool playSelected();
@@ -48,14 +50,21 @@ private:
     int searchSel_ = 0;
     struct PendingLibrary {
         bool active = false;
+        LibMode mode = LibMode::LIKED;
         int page = 0;
+        std::string playlistId;
+        std::string playlistName;
         std::future<std::tuple<std::vector<SearchResult>, int, std::string>> future;
     };
-    PendingLibrary pendingLiked_;
-    std::vector<SearchResult> likedResults_;
-    int likedSel_ = 0;
-    int likedPage_ = 0;
-    int likedTotal_ = 0;
+    PendingLibrary pendingLib_;
+    std::vector<SearchResult> libResults_;
+    int libSel_ = 0;
+    LibMode libMode_ = LibMode::LIKED;
+    int libPage_ = 0;
+    int libTotal_ = 0;
+    std::string libPlaylistId_;
+    std::string libPlaylistName_;
+    int libPlPage_ = 0;
     int seekPosSec_ = 0;
     bool seekHeld_ = false;
     std::string lastUri_;
