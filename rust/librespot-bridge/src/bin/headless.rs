@@ -107,15 +107,20 @@ async fn main() -> Result<(), Error> {
         move || sink_builder(None, audio_format),
     );
 
-    let (spirc, spirc_task) = Spirc::new(
-        ConnectConfig::default(),
+    // ConnectConfig::default().name is "librespot" — show our own name.
+    // No auto-activate: launching must not hijack playback that is already
+    // playing elsewhere; the user transfers playback explicitly.
+    let mut connect_config = ConnectConfig::default();
+    connect_config.name = DEVICE_NAME.to_owned();
+
+    let (_spirc, spirc_task) = Spirc::new(
+        connect_config,
         session.clone(),
         credentials,
         player,
         mixer,
     )
     .await?;
-    spirc.activate()?;
 
     println!("Connected as {}.", session.username());
     println!("Play from the Spotify app. Press Ctrl+C to quit.");
