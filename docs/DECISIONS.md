@@ -221,6 +221,11 @@ Append-only log: date, decision, why, alternatives rejected.
 - 2026-09-11 (post-Phase 9 GUI polish): search Play-result used resetting
   `loadUri` (queue wipe). New `Queue::insertAt` + `Player::playFirst` put
   the track on top and play it, preserving the rest.
+- 2026-09-11 (UI rework phase 3): playlists + settings + placer.
+  Content windows fetch own rows async (liked: 50; playlists: context
+  page); closed ones are destroyed. `Add Playlist to Queue` enqueues all
+  visible rows; queue/search/library event flows unchanged. Backend,
+  network, playback, metadata untouched per the brief.
 - 2026-09-11 (UI rework phase 1): `third_party/imgui` master v1.92.9b →
   docking snapshot `367b2c2` ("1.93.0 WIP"). Reason: master has no
   multi-OS-window support (verified absent: no UpdatePlatformWindows /

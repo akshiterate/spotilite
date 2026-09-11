@@ -14,6 +14,10 @@ void App::drawSearchWindow() {
         ImGui::SetNextWindowFocus();
         focusSearch_ = false;
     }
+    if (placeSearch_) {
+        placeMe("search", ImVec2(480, 430), 0);
+        placeSearch_ = false;
+    }
     if (!ImGui::Begin("Search", &searchOpen_)) {
         ImGui::End();
         return;

@@ -17,6 +17,10 @@ void App::drawQueueWindow() {
         ImGui::SetNextWindowFocus();
         focusQueue_ = false;
     }
+    if (placeQueue_) {
+        placeMe("queue", ImVec2(360, 430), 0);
+        placeQueue_ = false;
+    }
     if (!ImGui::Begin("Queue", &queueOpen_)) {
         ImGui::End();
         return;

@@ -1,6 +1,8 @@
 // App shell + entry point. Build (no CMake change — direct link):
 //   g++ -std=c++17 cpp/ui/app.cpp cpp/ui/queue_window.cpp
-//       cpp/ui/search_window.cpp cpp/core/player.cpp
+//       cpp/ui/search_window.cpp cpp/ui/playlists_window.cpp
+//       cpp/ui/content_window.cpp cpp/ui/settings_window.cpp
+//       cpp/ui/window_placer.cpp cpp/core/player.cpp
 //       third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
 //       third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
 //       third_party/imgui/backends/imgui_impl_win32.cpp
@@ -404,6 +406,9 @@ void App::updateShared() {
 
 void App::frame() {
     updateShared();
+    if (hwnd_) {
+        ::GetWindowRect(hwnd_, &mainRect_);
+    }
     if (queueOpen_) {
         if (focusQueue_) {
             ImGui::SetNextWindowFocus();
@@ -418,6 +423,21 @@ void App::frame() {
         }
         drawSearchWindow();
     }
+    if (playlistsOpen_) {
+        if (focusPlaylists_) {
+            ImGui::SetNextWindowFocus();
+            focusPlaylists_ = false;
+        }
+        drawPlaylistsWindow();
+    }
+    if (settingsOpen_) {
+        if (focusSettings_) {
+            ImGui::SetNextWindowFocus();
+            focusSettings_ = false;
+        }
+        drawSettingsWindow();
+    }
+    drawContentWindows();
 
     const PlaybackState& s = player_.state();
     // Fill the whole OS window: no ImGui window-inside-a-window.
@@ -432,11 +452,25 @@ void App::frame() {
     if (ImGui::Button("Queue")) {
         queueOpen_ = true;
         focusQueue_ = true;
+        placeQueue_ = true;
     }
     ImGui::SameLine();
     if (ImGui::Button("Search")) {
         searchOpen_ = true;
         focusSearch_ = true;
+        placeSearch_ = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Playlists")) {
+        playlistsOpen_ = true;
+        focusPlaylists_ = true;
+        placePlaylists_ = true;
+        fetchLibrary(LibMode::PLAYLISTS, 0, "", "");
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Settings")) {
+        settingsOpen_ = true;
+        focusSettings_ = true;
     }
 
     // 3+7. Current track + small artwork.
@@ -551,6 +585,7 @@ int App::run() {
         ::UnregisterClassW(wc.lpszClassName, wc.hInstance);
         return 1;
     }
+    hwnd_ = hwnd;
     ::ShowWindow(hwnd, SW_SHOWDEFAULT);
     ::UpdateWindow(hwnd);
 

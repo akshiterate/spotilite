@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "core/player.h"
+#include "imgui.h"
 
 namespace spotilite {
 
@@ -39,6 +40,11 @@ private:
     // Phase-3 library/playlists window reuses these.
     void drawQueueWindow();
     void drawSearchWindow();
+    void drawPlaylistsWindow();
+    void drawContentWindows();
+    void drawSettingsWindow();
+    void openContent(const std::string& key, const std::string& title, bool isLiked);
+    void placeMe(const char* role, ImVec2 size, int cascade);
 
     Player player_;
     int queueUpSel_ = 0;
@@ -88,11 +94,34 @@ private:
 
     ID3D11Device* dev_ = nullptr;
     ID3D11DeviceContext* ctx_ = nullptr;
+    HWND hwnd_ = nullptr;
+    RECT mainRect_ = {};
 
     bool queueOpen_ = false;
     bool searchOpen_ = false;
+    bool playlistsOpen_ = false;
+    bool settingsOpen_ = false;
     bool focusQueue_ = false;
     bool focusSearch_ = false;
+    bool focusPlaylists_ = false;
+    bool focusSettings_ = false;
+    bool placeQueue_ = false;
+    bool placeSearch_ = false;
+    bool placePlaylists_ = false;
+    struct ContentWin {
+        std::string key;
+        std::string title;
+        bool isLiked = false;
+        bool open = true;
+        bool placeMe = true;
+        bool focusMe = false;
+        bool active = false;
+        std::future<std::pair<std::vector<SearchResult>, std::string>> future;
+        std::vector<SearchResult> rows;
+        int sel = 0;
+        std::string error;
+    };
+    std::vector<ContentWin> contentWins_;
 };
 
 }  // namespace spotilite
