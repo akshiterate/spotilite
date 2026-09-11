@@ -97,6 +97,22 @@ int main(int argc, char** argv) {
     if (spotify_config_summary(cfgBuf, sizeof(cfgBuf)) == SPOTIFY_OK) {
         std::cout << "config: " << cfgBuf << "\n";
     }
+    // Config get/set round-trip (restores the original afterwards).
+    {
+        char original[256] = "";
+        spotify_config_get("device_name", original, sizeof(original));
+        check(spotify_config_set("device_name", "core-test-marker") == SPOTIFY_OK,
+              "config set", spotify_last_error(nullptr));
+        char checkBack[256] = "";
+        check(spotify_config_get("device_name", checkBack, sizeof(checkBack)) == SPOTIFY_OK &&
+                  std::string(checkBack) == "core-test-marker",
+              "config get back");
+        check(spotify_config_set("device_name", original[0] ? original : "spotilite") ==
+                  SPOTIFY_OK,
+              "config restore");
+        check(spotify_config_set("bogus-key", "x") != SPOTIFY_OK,
+              "config bad key rejected");
+    }
 
     spotilite::Player player;
     std::cout << "ok: core player created\n";

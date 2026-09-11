@@ -44,6 +44,7 @@ private:
     // Phase-3 library/playlists window reuses these.
     void drawQueueWindow();
     void drawSearchWindow();
+    void openSettings();
     void drawPlaylistsWindow();
     void drawContentWindows();
     void drawSettingsWindow();
@@ -93,6 +94,13 @@ private:
     PendingNames pendingNames_;
     void ensureNames();
     std::string trackLabel(const std::string& uri);
+    // Settings editor state (loaded on open, saved per edit).
+    char cfgDevice_[128] = "";
+    int cfgBitrateIdx_ = 1;  // 0=96, 1=160, 2=320
+    bool cfgNorm_ = true;
+    int cfgVolPct_ = 50;
+    int cfgCacheMb_ = 1024;
+    std::string cfgError_;
     std::string lastUri_;
     std::string error_;
 

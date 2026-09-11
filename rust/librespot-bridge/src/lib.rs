@@ -2007,6 +2007,122 @@ pub unsafe extern "C" fn spotify_config_summary(out: *mut c_char, cap: std::os::
     SPOTIFY_OK
 }
 
+fn write_config_file(cfg: &BridgeConfig) -> Result<(), String> {
+    // Full rewrite with the standard header: no extra parser needed, and
+    // the file always stays in canonical shape.
+    let text = format!(
+        "# spotilite configuration - edit values, then restart the app.\n\
+        # Only implemented keys take effect; unknown keys are ignored.\n\
+        device_name = {:?}\n\
+        bitrate = {}\n\
+        normalisation = {}\n\
+        volume = {:.2}\n\
+        cache_size_mb = {}\n",
+        cfg.device_name, cfg.bitrate, cfg.normalisation, cfg.volume, cfg.cache_size_mb
+    );
+    std::fs::write(config_path(), text).map_err(|e| format!("config write: {e}"))
+}
+
+fn config_key_error(key: &str) -> (std::os::raw::c_int, String) {
+    (
+        SPOTIFY_ERR_BAD_URI,
+        format!("unknown config key: {key}"),
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_config_get(
+    key: *const c_char,
+    out: *mut c_char,
+    cap: std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    if key.is_null() || out.is_null() || cap <= 0 {
+        return SPOTIFY_ERR_NULL_ARG;
+    }
+    // SAFETY: null-checked; caller passes valid UTF-8 per header.
+    let key_text = match unsafe { CStr::from_ptr(key) }.to_str() {
+        Ok(s) => s,
+        Err(_) => return fail(SPOTIFY_ERR_BAD_URI, "key is not valid UTF-8".to_owned()),
+    };
+    let cfg = load_config();
+    let text = match key_text {
+        "device_name" => cfg.device_name.clone(),
+        "bitrate" => cfg.bitrate.to_string(),
+        "normalisation" => cfg.normalisation.to_string(),
+        "volume" => format!("{:.2}", cfg.volume),
+        "cache_size_mb" => cfg.cache_size_mb.to_string(),
+        _ => {
+            let (code, msg) = config_key_error(key_text);
+            return fail(code, msg);
+        }
+    };
+    if text.len() + 1 > cap as usize {
+        return fail(SPOTIFY_ERR_INTERNAL, "buffer too small".to_owned());
+    }
+    // SAFETY: bounds-checked above; caller provides `cap` bytes.
+    unsafe {
+        std::ptr::copy_nonoverlapping(text.as_ptr() as *const c_char, out, text.len());
+        *out.add(text.len()) = 0;
+    }
+    SPOTIFY_OK
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_config_set(
+    key: *const c_char,
+    value: *const c_char,
+) -> std::os::raw::c_int {
+    if key.is_null() || value.is_null() {
+        return SPOTIFY_ERR_NULL_ARG;
+    }
+    // SAFETY: null-checked; caller passes valid UTF-8 per header.
+    let (key_text, value_text) = match (
+        unsafe { CStr::from_ptr(key) }.to_str(),
+        unsafe { CStr::from_ptr(value) }.to_str(),
+    ) {
+        (Ok(k), Ok(v)) => (k, v),
+        _ => return fail(SPOTIFY_ERR_BAD_URI, "key/value not valid UTF-8".to_owned()),
+    };
+    // Strict validation (interactive feedback); the file loader stays
+    // lenient so hand edits never crash startup.
+    let mut cfg = load_config();
+    match key_text {
+        "device_name" if !value_text.trim().is_empty() => {
+            cfg.device_name = value_text.trim().to_owned();
+        }
+        "bitrate" => match value_text.trim().parse::<u32>() {
+            Ok(96) | Ok(160) | Ok(320) => cfg.bitrate = value_text.trim().parse().unwrap_or(160),
+            _ => return fail(SPOTIFY_ERR_BAD_URI, "bitrate must be 96, 160 or 320".to_owned()),
+        },
+        "normalisation" => match value_text.trim() {
+            "true" | "1" => cfg.normalisation = true,
+            "false" | "0" => cfg.normalisation = false,
+            _ => {
+                return fail(
+                    SPOTIFY_ERR_BAD_URI,
+                    "normalisation must be true or false".to_owned(),
+                )
+            }
+        },
+        "volume" => match value_text.trim().parse::<f32>() {
+            Ok(v) if (0.0..=1.0).contains(&v) => cfg.volume = v,
+            _ => return fail(SPOTIFY_ERR_BAD_URI, "volume must be 0.0..1.0".to_owned()),
+        },
+        "cache_size_mb" => match value_text.trim().parse::<u64>() {
+            Ok(mb) if mb >= 64 => cfg.cache_size_mb = mb,
+            _ => return fail(SPOTIFY_ERR_BAD_URI, "cache_size_mb must be >= 64".to_owned()),
+        },
+        _ => {
+            let (code, msg) = config_key_error(key_text);
+            return fail(code, msg);
+        }
+    }
+    if let Err(msg) = write_config_file(&cfg) {
+        return fail(SPOTIFY_ERR_INTERNAL, msg);
+    }
+    SPOTIFY_OK
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn spotify_last_error(player: *const SpotifyPlayer) -> *const c_char {
     let _ = player;

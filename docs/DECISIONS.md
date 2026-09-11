@@ -232,6 +232,12 @@ Append-only log: date, decision, why, alternatives rejected.
   `toml 0.8` (pure parser). Rust alone parses (single parser, no skew);
   C++ never touches the file — Settings window shows path + restart note,
   tests use `spotify_config_summary`. Bad values fall back per key.
+- 2026-09-11 (Phase 11 follow-up): Settings window is editable —
+  `spotify_config_get/set` ABI (strict validation with messages) +
+  header-only `spotilite::Config` wrapper. Widgets save per edit
+  (slider/input on release, combo/checkbox immediately); file rewritten
+  canonically each save (no extra parser dep); values apply on restart,
+  stated in-window. `set` is strict, the file loader lenient, by design.
 - 2026-09-11 (UI feedback round 3): queue shows row 0 = now playing
   (move target and delete exclude it; Play Selected on it replays);
   selection mapping is index-based so labels always match. Playlist,

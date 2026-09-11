@@ -485,9 +485,7 @@ void App::frame() {
     }
     ImGui::SameLine();
     if (ImGui::Button("Settings")) {
-        settingsOpen_ = true;
-        focusSettings_ = true;
-        placeSettings_ = true;
+        openSettings();
     }
 
     // 3+7. Current track + small artwork.

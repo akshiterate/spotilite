@@ -227,6 +227,12 @@ const char* spotify_last_error(const SpotifyPlayer* player);
 // One-line effective configuration (spotilite.toml) for diagnostics.
 int spotify_config_summary(char* out, int cap);
 
+// Single configuration keys (same file). Get returns the canonical value;
+// set validates strictly (unknown key or bad value fails) and persists
+// immediately. Values apply on restart.
+int spotify_config_get(const char* key, char* out, int cap);
+int spotify_config_set(const char* key, const char* value);
+
 #ifdef __cplusplus
 }
 #endif
