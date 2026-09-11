@@ -199,3 +199,10 @@ Append-only log: date, decision, why, alternatives rejected.
 - 2026-09-11 (Phase 8): Refresh responses often omit a new refresh token —
   the bridge preserved the cached one instead of overwriting with empty
   (the overwrite wiped a login mid-phase; fixed + re-logged-in).
+- 2026-09-11 (post-Phase 9 GUI polish): ImGui window fills the OS window
+  (NoTitleBar/NoResize/NoMove) — no more window-inside-a-window.
+- 2026-09-11 (post-Phase 9 GUI polish): Play-button dead end fixed —
+  `resume()` cannot revive an ended track, so the toggle restarts
+  (reloads current URI) when position is at/past duration, and resumes
+  when paused. URI Play always (re)loads; the two buttons now behave
+  distinctly by design.

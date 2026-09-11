@@ -319,7 +319,13 @@ void Gui::frame() {
     pollMetadata();
 
     const PlaybackState& s = player_.state();
-    ImGui::Begin("spotilite");
+    // Fill the whole OS window: no ImGui window-inside-a-window.
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->WorkPos);
+    ImGui::SetNextWindowSize(viewport->WorkSize);
+    ImGui::Begin("spotilite", nullptr,
+                 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+                     ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse);
 
     // 1+2. URI input + queue-as-results (real search is Phase 8).
     ImGui::InputText("URI", uriBuf_, sizeof(uriBuf_));
@@ -474,11 +480,25 @@ void Gui::frame() {
     }
     ImGui::SameLine();
     if (ImGui::Button(s.playing ? "Pause" : "Play")) {
-        bool ok = s.playing ? player_.pause() : player_.resume();
-        if (!ok && s.currentUri.empty()) {
+        if (s.playing) {
+            if (player_.pause()) {
+                error_.clear();
+            } else {
+                error_ = player_.lastError();
+            }
+        } else if (s.currentUri.empty()) {
             error_ = "nothing loaded; paste a URI above";
-        } else if (!ok) {
-            error_ = player_.lastError();
+        } else {
+            // resume() only revives a paused track: on an ended (or
+            // never-started) track it does nothing, so restart instead.
+            const bool ended = metaHave_ && meta_.durationMs > 0 &&
+                               s.positionMs + 2000 >= meta_.durationMs;
+            const bool ok = ended ? player_.loadUri(s.currentUri) : player_.resume();
+            if (ok) {
+                error_.clear();
+            } else {
+                error_ = player_.lastError();
+            }
         }
     }
     ImGui::SameLine();
