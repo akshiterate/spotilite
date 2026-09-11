@@ -1,0 +1,3 @@
+[workspace]
+members = ["rust/librespot-bridge"]
+resolver = "2"

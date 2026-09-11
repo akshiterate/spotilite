@@ -1,0 +1,8 @@
+[package]
+name = "librespot-bridge"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+# staticlib is for the C ABI consumer (Phase 2); rlib keeps cargo tests fast.
+crate-type = ["staticlib", "rlib"]
