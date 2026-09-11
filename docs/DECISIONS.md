@@ -39,3 +39,25 @@ Append-only log: date, decision, why, alternatives rejected.
   store). `cargo tree -i librespot` shows only `librespot-bridge` as reverse
   dep; 393 packages in `Cargo.lock`, committed separately per 1.16. Pinned
   dep release-builds clean (first compile 4m11s, warms cache for Phase 1).
+- 2026-09-11 (Phase 1): Auth = discovery (zeroconf) provisioning, per user
+  choice on 1.11 STOP-and-ask (Premium confirmed). Rationale: no login or
+  secrets on our side; matches the plan's success flow (device visible in
+  the official app before any login). Rejected: OAuth browser login
+  (needs client-id/redirect-port UX, heavier for a proof). Device name
+  `Spotify-lite`, `DeviceType::Computer` (shows correctly in app device
+  list; default would be Speaker).
+- 2026-09-11 (Phase 1): Stable device id persisted in a `device-id` file:
+  `SessionConfig::default().device_id` is a fresh UUID per run and
+  credential blobs are device-bound, so reuse requires stability. File
+  lives with the cache (below), not in the repo.
+- 2026-09-11 (Phase 1): Receiver state (credentials.json, volume, audio
+  files) under `%LOCALAPPDATA%\spotilite\cache`, created at runtime —
+  outside the repo so 1.15 (never commit credentials) holds by
+  construction. Rejected: repo-relative `.cache/` (would risk committing
+  secrets).
+- 2026-09-11 (Phase 1): Receiver as `src/bin/headless.rs` binary in the
+  bridge crate (Phase 1 Allowed files: `rust/**`). `cargo build` picks up
+  bins automatically, so no CMake change needed. Pinned-API notes: `Cache`
+  is `core::cache::Cache`; audio/mixer `find()` return `Option`;
+  `Discovery` is a `Stream<Item = Credentials>`; `Cache::new` args share
+  one generic type.
