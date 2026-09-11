@@ -218,3 +218,6 @@ Append-only log: date, decision, why, alternatives rejected.
   "Play" and the toggle "Play" shared one ID, so clicks landed on the
   wrong button (likely the original dead-Play root cause). Labels now
   carry hidden `##uri` / `##toggle` ID suffixes.
+- 2026-09-11 (post-Phase 9 GUI polish): search Play-result used resetting
+  `loadUri` (queue wipe). New `Queue::insertAt` + `Player::playFirst` put
+  the track on top and play it, preserving the rest.

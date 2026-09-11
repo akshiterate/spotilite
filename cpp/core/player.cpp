@@ -175,6 +175,12 @@ bool Player::previous() {
 
 bool Player::playCurrent() { return loadCurrent(); }
 
+bool Player::playFirst(const std::string& uri) {
+    queue_.insertAt(0, uri);
+    queue_.select(0);
+    return loadCurrent();
+}
+
 void Player::enqueue(const std::string& uri) { queue_.add(uri); }
 
 void Player::applyEvent(const PlayerEvent& event) {

@@ -79,6 +79,7 @@ public:
     bool next();                   // queue forward + load; false at the end
     bool previous();               // queue back + load; false at the start
     bool playCurrent();            // load queue current without resetting
+    bool playFirst(const std::string& uri);  // insert at top + play, rest kept
     void enqueue(const std::string& uri);
 
     // Drain one event into `out` and apply it to state(); true if an event

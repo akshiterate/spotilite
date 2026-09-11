@@ -242,6 +242,17 @@ int main(int argc, char** argv) {
           "queue order after move");
     check(player.queue().current() == "spotify:track:aaa", "queue current follows move");
     check(!player.queue().move(9, 0), "queue move out of range fails");
+    player.queue().clear();
+    player.enqueue("spotify:track:bbb");
+    player.queue().insertAt(0, "spotify:track:aaa");
+    check(player.queue().at(0) == "spotify:track:aaa" &&
+              player.queue().at(1) == "spotify:track:bbb",
+          "queue insertAt top");
+    check(player.queue().current() == "spotify:track:bbb", "queue index follows insert");
+    check(!player.playFirst("spotify:track:ccc"), "playFirst bad uri fails load");
+    check(player.queue().size() == 3, "playFirst kept rest");
+    check(player.queue().at(0) == "spotify:track:ccc", "playFirst inserted at top");
+    check(player.queue().index() == 0, "playFirst selected top");
 
     // Player-level next/previous wire queue navigation into bridge loads.
     // Dummy URIs fail at the bridge, which proves the call chain reaches it.

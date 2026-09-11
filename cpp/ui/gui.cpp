@@ -291,7 +291,8 @@ bool Gui::playSearchResult() {
         error_ = "only tracks can be played yet";
         return false;
     }
-    if (!player_.loadUri(item.uri)) {
+    // Top-of-queue play: the rest of the queue survives.
+    if (!player_.playFirst(item.uri)) {
         error_ = player_.lastError();
         return false;
     }

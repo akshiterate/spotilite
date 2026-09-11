@@ -104,6 +104,18 @@ public:
         return true;
     }
 
+    // Insert at position i (clamped to the end); rows at or after i shift
+    // down along with the current index when affected.
+    void insertAt(std::size_t i, const std::string& uri) {
+        if (i > uris_.size()) {
+            i = uris_.size();
+        }
+        uris_.insert(uris_.begin() + static_cast<std::ptrdiff_t>(i), uri);
+        if (i <= index_) {
+            ++index_;
+        }
+    }
+
 private:
     std::vector<std::string> uris_;
     std::size_t index_ = 0;
