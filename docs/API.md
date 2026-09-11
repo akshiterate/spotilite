@@ -141,6 +141,16 @@ C++: `spotilite::SearchResult` + `SearchKind` (`SEARCH_ANY` = all; `ALL`
 is a Windows macro) + `Player::search()` into a vector. GUI: async Find,
 results listbox, Play-result (tracks only).
 
+Phase 10.1 (current): Liked Songs, paged:
+
+```c
+int spotify_liked_tracks(SpotifyPlayer*, int limit, int offset,
+                         SpotifySearchItem* items, int cap, int* total_out);
+```
+
+C++: `Player::likedTracks()` into a vector + total. GUI: Liked section
+with page buttons + Play/Add. Shared `web_get` plumbing; library cap 50.
+
 Phase 9 (current): full queue in `cpp/core/queue.h` — add/clear/next/
 previous/select/at/removeAt/move (index follows its track; removing the
 playing row doesn't stop it). `Player::loadUri` resets; `playCurrent` /

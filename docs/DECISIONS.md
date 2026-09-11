@@ -221,3 +221,10 @@ Append-only log: date, decision, why, alternatives rejected.
 - 2026-09-11 (post-Phase 9 GUI polish): search Play-result used resetting
   `loadUri` (queue wipe). New `Queue::insertAt` + `Player::playFirst` put
   the track on top and play it, preserving the rest.
+- 2026-09-11 (Phase 10.1 Liked Songs): Web API calls share `web_get`
+  (token + one 401 retry); login failures keep AUTH via a dedicated
+  variant. Library pages cap at 50 (official cap; search's 10 is
+  search-only). Totals flow out for paging UI; null rows filtered as
+  before. GUI library section mirrors the search async pattern; `rust/`
+  + `include/` touched because network + ABI live there per 1.6/1.7
+  (same as Phase 8).
