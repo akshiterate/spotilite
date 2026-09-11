@@ -238,6 +238,13 @@ Append-only log: date, decision, why, alternatives rejected.
   (slider/input on release, combo/checkbox immediately); file rewritten
   canonically each save (no extra parser dep); values apply on restart,
   stated in-window. `set` is strict, the file loader lenient, by design.
+- 2026-09-11 (Phase 15): measured first. Startup 1088ms (connect-bound)
+  → async connect with UI adoption (474/350ms, Connecting.../Retry UI);
+  binaries 34–44MB → `strip` (~44% off, all ≤25 except headless 27.6).
+  Accepted as-is: idle CPU ~1%, headless WS 21.5MB, warm-start <200ms
+  (needs deeper startup surgery for little gain). Network by
+  construction (~1.2MB/min @160kbps); interface counters too noisy on a
+  lived-in machine to attribute.
 - 2026-09-11 (UI feedback round 3): queue shows row 0 = now playing
   (move target and delete exclude it; Play Selected on it replays);
   selection mapping is index-based so labels always match. Playlist,

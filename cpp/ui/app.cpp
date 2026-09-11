@@ -427,6 +427,30 @@ bool App::playLibraryResult() {
 }
 
 void App::updateShared() {
+    if (!connectStarted_) {
+        connectStarted_ = true;
+        connectFailed_ = false;
+        connectFuture_ = std::async(std::launch::async, [this] {
+            std::pair<bool, std::string> out{false, ""};
+            if (player_.connectBlocking()) {
+                out.first = true;
+            } else {
+                out.second = player_.lastError();
+            }
+            return out;
+        });
+    } else if (!player_.state().connected && connectFuture_.valid() &&
+               connectFuture_.wait_for(std::chrono::seconds(0)) ==
+                   std::future_status::ready) {
+        auto [ok, error] = connectFuture_.get();
+        if (ok) {
+            player_.adoptConnected();
+        } else {
+            connectStarted_ = false;  // Retry relaunches from the UI.
+            connectFailed_ = true;
+            error_ = error;
+        }
+    }
     // Events drive state; artwork texture follows READY events.
     PlayerEvent event;
     while (player_.pollEvent(event)) {
@@ -522,6 +546,20 @@ void App::frame() {
     ImGui::SameLine();
     if (ImGui::Button("Settings")) {
         openSettings();
+    }
+    if (!player_.state().connected && !connectFailed_) {
+        ImGui::SameLine();
+        ImGui::Text("Connecting...");
+    }
+    if (connectFailed_) {
+        ImGui::SameLine();
+        ImGui::Text("Connect failed.");
+        ImGui::SameLine();
+        if (ImGui::Button("Retry")) {
+            connectStarted_ = false;
+            connectFailed_ = false;
+            error_.clear();
+        }
     }
 
     // 3+7. Current track + small artwork.
@@ -691,12 +729,6 @@ bool App::handleHotKey(int vk, bool ctrl, bool alt) {
 }
 
 int App::run() {
-    if (!player_.connect()) {
-        ::MessageBoxA(nullptr, player_.lastError().c_str(), "spotilite: connect failed",
-                      MB_OK | MB_ICONERROR);
-        return 1;
-    }
-
     WNDCLASSEXW wc{};
     wc.cbSize = sizeof(wc);
     wc.style = CS_CLASSDC;

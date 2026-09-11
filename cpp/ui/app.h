@@ -88,6 +88,10 @@ private:
     int libBackPage_ = 0;
     int seekPosSec_ = 0;
     bool seekHeld_ = false;
+    // Non-blocking startup: connect runs on a worker, adopted onready.
+    std::future<std::pair<bool, std::string>> connectFuture_;
+    bool connectStarted_ = false;
+    bool connectFailed_ = false;
     // Refit-once flags: async content can land after auto-size ran.
     bool sizeSearch_ = false;
     bool sizePlaylists_ = false;

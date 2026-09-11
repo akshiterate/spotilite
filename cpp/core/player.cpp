@@ -25,9 +25,16 @@ bool Player::callOk(int rc) {
 }
 
 bool Player::connect() {
-    if (!callOk(spotify_connect(handle_))) {
+    if (!connectBlocking()) {
         return false;
     }
+    adoptConnected();
+    return true;
+}
+
+bool Player::connectBlocking() { return callOk(spotify_connect(handle_)); }
+
+void Player::adoptConnected() {
     state_.connected = true;
     // Adopt the real mixer volume: it may hold a cached value from a
     // previous run, which the 0.5 default would otherwise misreport.
@@ -35,7 +42,6 @@ bool Player::connect() {
     if (spotify_get_volume(handle_, &actual) == SPOTIFY_OK) {
         state_.volume = actual;
     }
-    return true;
 }
 
 bool Player::loadUri(const std::string& uri) {

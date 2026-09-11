@@ -63,6 +63,10 @@ public:
 
     // All commands return false on failure; details in lastError().
     bool connect();
+    // Split form for non-blocking startup: run connectBlocking() off the
+    // UI thread, then adoptConnected() on the UI thread once it is done.
+    bool connectBlocking();
+    void adoptConnected();
     bool loadUri(const std::string& uri);
     bool play();
     bool pause();

@@ -72,9 +72,11 @@ use. `spotilite::Player` (RAII over the ABI above):
 connect/loadUri/play/pause/resume/seek/setVolume/next/previous/enqueue,
 `pollEvent`/`drainEvents`, mirrored `PlaybackState`
 (connected/playing/currentUri/volume/positionMs), bool + `lastError()`
-errors. `pause()`/`resume()` wait ≤300ms for the confirming event
-(fallback: optimistic/unchanged). `connect()` adopts the real mixer
-volume into state. `spotilite::Queue` (header-only): add/clear/next/previous/select;
+errors. `connect()` = blocking connect + adopt; the split form
+`connectBlocking()` (any thread) + `adoptConnected()` (calling thread)
+serves non-blocking startup. `pause()`/`resume()` wait ≤300ms for the
+confirming event (fallback: optimistic/unchanged). `connect()` adopts
+the real mixer volume into state. `spotilite::Queue` (header-only): add/clear/next/previous/select;
 `loadUri` resets it to the single URI. No Rust symbols leak past the core.
 
 Phase 4: terminal frontend `build/tui.exe` (`cpp/app/tui.*`,
