@@ -543,8 +543,15 @@ void App::frame() {
             } else {
                 error_ = player_.lastError();
             }
+        } else if (s.currentUri.empty() && player_.queue().empty()) {
+            error_ = "queue is empty; add tracks from Search or Playlists";
         } else if (s.currentUri.empty()) {
-            error_ = "nothing loaded; paste a URI above";
+            // Stocked but never started: play the current queue position.
+            if (player_.playCurrent()) {
+                error_.clear();
+            } else {
+                error_ = player_.lastError();
+            }
         } else {
             // resume() only revives a paused track: on an ended (or
             // never-started) track it does nothing, so restart instead.
