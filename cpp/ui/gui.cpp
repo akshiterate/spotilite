@@ -330,7 +330,10 @@ void Gui::frame() {
     // 1+2. URI input + queue-as-results (real search is Phase 8).
     ImGui::InputText("URI", uriBuf_, sizeof(uriBuf_));
     ImGui::SameLine();
-    if (ImGui::Button("Play")) {
+    // NOTE: the ## suffix keeps the visible label while giving the item a
+    // unique ID. Two visible "Play" buttons shared one ID before, which
+    // made clicks land on the wrong button.
+    if (ImGui::Button("Play##uri")) {
         if (!player_.loadUri(uriBuf_)) {
             error_ = player_.lastError();
         } else {
@@ -482,7 +485,7 @@ void Gui::frame() {
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button(s.playing ? "Pause" : "Play")) {
+    if (ImGui::Button(s.playing ? "Pause##toggle" : "Play##toggle")) {
         if (s.playing) {
             if (player_.pause()) {
                 error_.clear();

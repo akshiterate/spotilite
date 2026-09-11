@@ -214,3 +214,7 @@ Append-only log: date, decision, why, alternatives rejected.
   (reloads current URI) when position is at/past duration, and resumes
   when paused. URI Play always (re)loads; the two buttons now behave
   distinctly by design.
+- 2026-09-11 (post-Phase 9 GUI polish): ImGui duplicate-ID bug — the URI
+  "Play" and the toggle "Play" shared one ID, so clicks landed on the
+  wrong button (likely the original dead-Play root cause). Labels now
+  carry hidden `##uri` / `##toggle` ID suffixes.
