@@ -52,6 +52,9 @@ public:
     bool seek(uint32_t positionMs);
     bool setVolume(float volume);  // 0.0..1.0, clamped by the bridge
     bool metadata(TrackMetadata& out);  // fetch for last loaded URI
+    bool requestArtwork(const std::string& uri);  // background fetch, idempotent
+    bool artworkReady(const std::string& uri, int size);  // cached? size: 128/256
+    std::string artworkPath(const std::string& uri, int size);  // "" on failure
     bool next();                   // queue forward + load; false at the end
     bool previous();               // queue back + load; false at the start
     void enqueue(const std::string& uri);

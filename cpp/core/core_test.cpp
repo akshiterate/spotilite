@@ -4,6 +4,8 @@
 // Without a URI it exercises connect, error paths and the queue; with one
 // it also plays/pauses/resumes/seeks with event polling. Exit 0 on success.
 #include <chrono>
+#include <cstdint>
+#include <fstream>
 #include <iostream>
 #include <string>
 #include <thread>
@@ -43,9 +45,29 @@ const char* eventName(int type) {
             return "volume";
         case SPOTIFY_EVENT_POSITION:
             return "position";
+        case SPOTIFY_EVENT_ARTWORK_READY:
+            return "artwork";
         default:
             return "other";
     }
+}
+
+// BMP dimensions from the 54-byte header (no image library needed).
+bool bmpDims(const std::string& path, int& w, int& h) {
+    std::ifstream f(path, std::ios::binary);
+    if (!f) {
+        return false;
+    }
+    f.seekg(18);
+    int32_t wi = 0, hi = 0;
+    f.read(reinterpret_cast<char*>(&wi), 4);
+    f.read(reinterpret_cast<char*>(&hi), 4);
+    if (!f) {
+        return false;
+    }
+    w = wi;
+    h = hi;
+    return true;
 }
 
 // Poll for up to `seconds`, printing events as they arrive.
@@ -98,6 +120,39 @@ int main(int argc, char** argv) {
         check(meta.durationMs > 60000 && meta.durationMs < 3600000,
               "metadata duration sane (1min..1h)");
         check(meta.uri == uri, "metadata uri echoes load");
+
+        // Artwork: request, then wait up to 20s for the background fetch
+        // while playback continues. BMP dims read straight from headers.
+        check(player.requestArtwork(uri), "request artwork", player.lastError());
+        bool artReady = false;
+        std::string artUri;
+        const auto artEnd =
+            std::chrono::steady_clock::now() + std::chrono::seconds(20);
+        while (!artReady && std::chrono::steady_clock::now() < artEnd) {
+            spotilite::PlayerEvent event;
+            while (player.pollEvent(event)) {
+                if (event.type == SPOTIFY_EVENT_ARTWORK_READY) {
+                    artReady = true;
+                    artUri = event.uri;
+                }
+            }
+            if (!artReady) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            }
+        }
+        check(artReady, "artwork ready event", player.lastError());
+        check(artUri == uri, "artwork event uri echoes load");
+        check(player.artworkReady(uri, 128), "artwork 128 cached");
+        check(player.artworkReady(uri, 256), "artwork 256 cached");
+        int aw = 0, ah = 0;
+        check(bmpDims(player.artworkPath(uri, 128), aw, ah) && aw == 128 && ah == 128,
+              "artwork 128x128 bmp");
+        check(bmpDims(player.artworkPath(uri, 256), aw, ah) && aw == 256 && ah == 256,
+              "artwork 256x256 bmp");
+        check(!player.artworkReady("garbage", 128), "artwork garbage rejected",
+              player.lastError());
+        check(!player.artworkReady(uri, 64), "artwork bad size rejected",
+              player.lastError());
 
         watch(player, 8, "playing");
         check(player.state().playing, "state.playing after load");

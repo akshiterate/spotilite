@@ -88,6 +88,26 @@ bool Player::metadata(TrackMetadata& out) {
     return true;
 }
 
+bool Player::requestArtwork(const std::string& uri) {
+    return callOk(spotify_request_artwork(handle_, uri.c_str()));
+}
+
+bool Player::artworkReady(const std::string& uri, int size) {
+    int ready = 0;
+    if (!callOk(spotify_artwork_state(handle_, uri.c_str(), size, &ready))) {
+        return false;
+    }
+    return ready != 0;
+}
+
+std::string Player::artworkPath(const std::string& uri, int size) {
+    char buf[SPOTIFY_ART_PATH_MAX];
+    if (!callOk(spotify_artwork_path(handle_, uri.c_str(), size, buf, sizeof(buf)))) {
+        return "";
+    }
+    return buf;
+}
+
 bool Player::next() {
     if (!queue_.next()) {
         lastError_ = "at end of queue";
