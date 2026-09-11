@@ -72,3 +72,17 @@ Append-only log: date, decision, why, alternatives rejected.
   `DEVICE_NAME`/banner/comments. Closed records (`PHASE_-1/0` summaries,
   earlier lines here) left as-was. Note: Spotify apps cache device names
   per device id — restart the app if a stale name lingers after upgrade.
+- 2026-09-11 (Phase 2): C ABI surface mirrors pinned 0.8 exactly:
+  create/destroy/connect/load_uri/play/pause/resume/seek/set_volume/
+  last_error. Omitted next/previous (no Player queue in 0.8; queue is
+  Phase 3/9 C++ scope). `resume` kept as its own symbol mapping to `play`.
+  Rejected: callbacks/events (Phase 3 polling per 1.7), discovery inside
+  the bridge (reuse Phase 1 cache; missing cache = AUTH error telling the
+  user to run headless.exe once).
+- 2026-09-11 (Phase 2): Handle owns a 2-worker Tokio runtime; `connect`
+  `block_on`s, the rest hand off to the player thread. Last-error via
+  per-thread buffer (pointer valid till next failure on same thread);
+  `last_error(NULL)` reads creation failures. Rejected: mutex-held string
+  (dangling pointer), errno-style codes without text (undebuggable from
+  C++). Connect failures split AUTH vs INTERNAL via `AuthenticationError`
+  downcast (`Error.error` is pub).
