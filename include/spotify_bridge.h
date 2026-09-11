@@ -125,6 +125,31 @@ typedef struct SpotifyMetadata {
 // not connected or when nothing was loaded yet.
 int spotify_current_metadata(SpotifyPlayer* player, SpotifyMetadata* out);
 
+// Album artwork (librespot cover bytes, downscaled, cached). Fetch runs in
+// the background and never blocks playback or the caller: request, then
+// watch for SPOTIFY_EVENT_ARTWORK_READY (uri = the requested track URI).
+// Files live under the machine-local cache as BMP:
+//   <cache>/art/<track-id>-128.bmp and <track-id>-256.bmp
+// BMP is deliberate: the C++ side verifies dimensions from the header with
+// no image library (revisit in Phase 7 if the GUI wants another format).
+#define SPOTIFY_ART_128 128
+#define SPOTIFY_ART_256 256
+#define SPOTIFY_ART_PATH_MAX 260
+#define SPOTIFY_EVENT_ARTWORK_READY 8
+
+// Start a background fetch+downscale+store for a playable URI. Idempotent:
+// already-cached art reports ready immediately. Fails on bad URI/size.
+int spotify_request_artwork(SpotifyPlayer* player, const char* uri);
+
+// 1 in *ready_out when the requested size is cached (memory or disk).
+int spotify_artwork_state(SpotifyPlayer* player, const char* uri, int size,
+                          int* ready_out);
+
+// Deterministic local path for the requested size (missing or not).
+// Fails when the buffer is too small.
+int spotify_artwork_path(SpotifyPlayer* player, const char* uri, int size,
+                         char* out, int cap);
+
 // Human-readable description of the last failure on the calling thread.
 // Never NULL. Pass NULL to read a creation-time failure.
 const char* spotify_last_error(const SpotifyPlayer* player);

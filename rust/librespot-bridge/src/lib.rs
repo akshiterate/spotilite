@@ -10,6 +10,7 @@
 //! C++ core). `resume` is provided and maps to `play`.
 
 use std::cell::RefCell;
+use std::collections::{HashMap, VecDeque};
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_float};
 use std::path::PathBuf;
@@ -44,7 +45,21 @@ pub struct SpotifyPlayer {
     connected: AtomicBool,
     event_rx: Mutex<PlayerEventChannel>,
     current_uri: Mutex<String>,
+    art_dir: PathBuf,
+    art_tx: tokio::sync::mpsc::UnboundedSender<String>,
+    art_rx: Mutex<tokio::sync::mpsc::UnboundedReceiver<String>>,
+    art_mem: Mutex<ArtFifo>,
 }
+
+// Small in-memory artwork cache: 128px BMP bytes keyed by track id, FIFO
+// eviction. Disk holds both sizes; memory keeps only the small one.
+struct ArtFifo {
+    map: HashMap<String, Vec<u8>>,
+    order: VecDeque<String>,
+}
+
+const ART_MEM_CAP: usize = 8;
+const ART_SIZES: [u32; 2] = [128, 256];
 
 // Last-error text, one buffer per calling thread. The pointer handed out is
 // valid until the next failing call on the same thread (documented in the
@@ -168,6 +183,8 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
             (session, player, event_rx)
         });
 
+        let (art_tx, art_rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+
         let handle = SpotifyPlayer {
             rt,
             session,
@@ -177,6 +194,13 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
             connected: AtomicBool::new(false),
             event_rx: Mutex::new(event_rx),
             current_uri: Mutex::new(String::new()),
+            art_dir: dir.join("art"),
+            art_tx,
+            art_rx: Mutex::new(art_rx),
+            art_mem: Mutex::new(ArtFifo {
+                map: HashMap::new(),
+                order: VecDeque::new(),
+            }),
         };
         Ok(Box::into_raw(Box::new(handle)))
     };
@@ -371,9 +395,12 @@ pub struct SpotifyEvent {
 }
 
 fn fill_uri(slot: &mut [c_char; SPOTIFY_EVENT_URI_MAX], uri: &SpotifyUri) {
-    let text = uri.to_string();
+    fill_str(&mut slot[..], &uri.to_string());
+}
+
+fn fill_str(slot: &mut [c_char], text: &str) {
     let bytes = text.as_bytes();
-    let n = bytes.len().min(SPOTIFY_EVENT_URI_MAX - 1);
+    let n = bytes.len().min(slot.len() - 1);
     for (i, b) in bytes[..n].iter().enumerate() {
         slot[i] = *b as c_char;
     }
@@ -465,6 +492,10 @@ pub unsafe extern "C" fn spotify_poll_event(
         Ok(guard) => guard,
         Err(_) => return fail(SPOTIFY_ERR_INTERNAL, "event lock poisoned".to_owned()),
     };
+    let mut art_rx = match handle.art_rx.lock() {
+        Ok(guard) => guard,
+        Err(_) => return fail(SPOTIFY_ERR_INTERNAL, "artwork lock poisoned".to_owned()),
+    };
     loop {
         match rx.try_recv() {
             Ok(event) => {
@@ -476,11 +507,36 @@ pub unsafe extern "C" fn spotify_poll_event(
                     return 1;
                 }
             }
-            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => return 0,
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
             Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
                 return fail(
                     SPOTIFY_ERR_INTERNAL,
                     "player event channel closed".to_owned(),
+                )
+            }
+        }
+        match art_rx.try_recv() {
+            Ok(uri) => {
+                let mut mapped = SpotifyEvent {
+                    event_type: SPOTIFY_EVENT_ARTWORK_READY,
+                    position_ms: 0,
+                    volume: 0,
+                    reserved: 0,
+                    uri: [0; SPOTIFY_EVENT_URI_MAX],
+                };
+                // Channel only carries URIs validated at request time.
+                fill_str(&mut mapped.uri, &uri);
+                // SAFETY: null-checked above; caller provides storage.
+                unsafe {
+                    *out = mapped;
+                }
+                return 1;
+            }
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => return 0,
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                return fail(
+                    SPOTIFY_ERR_INTERNAL,
+                    "artwork event channel closed".to_owned(),
                 )
             }
         }
@@ -600,6 +656,265 @@ pub unsafe extern "C" fn spotify_current_metadata(
     dest.duration_ms = meta.duration_ms;
     fill_slot(&mut dest.uri, &meta.uri);
     fill_slot(&mut dest.track_id, &meta.track_id);
+    SPOTIFY_OK
+}
+
+const SPOTIFY_EVENT_ARTWORK_READY: i32 = 8;
+
+fn art_path_for(dir: &PathBuf, track_id: &str, size: u32) -> PathBuf {
+    dir.join(format!("{track_id}-{size}.bmp"))
+}
+
+fn check_art_size(size: std::os::raw::c_int) -> Result<u32, (std::os::raw::c_int, String)> {
+    match size {
+        128 => Ok(128),
+        256 => Ok(256),
+        _ => Err((
+            SPOTIFY_ERR_BAD_URI,
+            "unsupported artwork size (128 or 256)".to_owned(),
+        )),
+    }
+}
+
+fn parse_playable(uri_text: &str) -> Result<SpotifyUri, (std::os::raw::c_int, String)> {
+    let uri = SpotifyUri::from_uri(uri_text)
+        .map_err(|e| (SPOTIFY_ERR_BAD_URI, format!("bad uri: {e}")))?;
+    if !uri.is_playable() {
+        return Err((
+            SPOTIFY_ERR_BAD_URI,
+            format!("uri is not playable audio: {uri_text}"),
+        ));
+    }
+    Ok(uri)
+}
+
+fn read_uri_arg(uri: *const c_char) -> Result<String, (std::os::raw::c_int, String)> {
+    if uri.is_null() {
+        return Err((SPOTIFY_ERR_NULL_ARG, "null uri".to_owned()));
+    }
+    // SAFETY: null-checked; caller passes valid UTF-8 per header.
+    unsafe { CStr::from_ptr(uri) }
+        .to_str()
+        .map(str::to_owned)
+        .map_err(|_| (SPOTIFY_ERR_BAD_URI, "uri is not valid UTF-8".to_owned()))
+}
+
+// Largest cover first: best source for downscaling.
+fn widest_cover(covers: &librespot::metadata::image::Images) -> Option<librespot::core::FileId> {
+    covers
+        .iter()
+        .max_by_key(|img| img.width)
+        .map(|img| img.id)
+}
+
+// Fetch cover bytes, downscale to both sizes, store BMPs on disk + the 128px
+// one in memory. Runs on the handle runtime, never on the caller thread.
+async fn fetch_and_store(
+    session: &Session,
+    art_dir: PathBuf,
+    track_id: String,
+    uri_text: String,
+) -> Result<(), String> {
+    let uri = SpotifyUri::from_uri(&uri_text).map_err(|e| format!("bad uri: {e}"))?;
+    let covers = match &uri {
+        SpotifyUri::Track { .. } => {
+            let track = Track::get(session, &uri)
+                .await
+                .map_err(|e| format!("track metadata: {e}"))?;
+            track.album.covers.clone()
+        }
+        SpotifyUri::Episode { .. } => {
+            let episode = Episode::get(session, &uri)
+                .await
+                .map_err(|e| format!("episode metadata: {e}"))?;
+            episode.covers.clone()
+        }
+        _ => return Err(format!("not playable audio: {uri_text}")),
+    };
+    let file_id =
+        widest_cover(&covers).ok_or_else(|| "no cover art in metadata".to_owned())?;
+    let bytes = session
+        .spclient()
+        .get_image(&file_id)
+        .await
+        .map_err(|e| format!("image download: {e}"))?;
+    let decoded =
+        image::load_from_memory(&bytes).map_err(|e| format!("image decode: {e}"))?;
+    std::fs::create_dir_all(&art_dir).map_err(|e| format!("art cache dir: {e}"))?;
+    for size in ART_SIZES {
+        let small = decoded.resize_exact(
+            size,
+            size,
+            image::imageops::FilterType::Triangle,
+        );
+        let rgb = small.to_rgb8();
+        let (w, h) = (rgb.width(), rgb.height());
+        let mut buf = Vec::new();
+        {
+            let mut cursor = std::io::Cursor::new(&mut buf);
+            let mut enc = image::codecs::bmp::BmpEncoder::new(&mut cursor);
+            enc.encode(rgb.as_raw(), w, h, image::ExtendedColorType::Rgb8)
+                .map_err(|e| format!("bmp encode: {e}"))?;
+        }
+        std::fs::write(art_path_for(&art_dir, &track_id, size), &buf)
+            .map_err(|e| format!("art cache write: {e}"))?;
+    }
+    Ok(())
+}
+
+// Promote the on-disk 128px BMP into the memory cache (FIFO cap). Called
+// from synchronous queries, so no cross-thread cache writes are needed.
+fn mem_insert(handle: &SpotifyPlayer, track_id: &str) {
+    let path = art_path_for(&handle.art_dir, track_id, 128);
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => return,
+    };
+    let mut mem = match handle.art_mem.lock() {
+        Ok(guard) => guard,
+        Err(_) => return,
+    };
+    if mem.map.contains_key(track_id) {
+        return;
+    }
+    while mem.map.len() >= ART_MEM_CAP {
+        match mem.order.pop_front() {
+            Some(old) => {
+                mem.map.remove(&old);
+            }
+            None => break,
+        }
+    }
+    mem.order.push_back(track_id.to_owned());
+    mem.map.insert(track_id.to_owned(), bytes);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_request_artwork(
+    player: *mut SpotifyPlayer,
+    uri: *const c_char,
+) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if let Err((code, msg)) = check_connected(handle) {
+        return fail(code, msg);
+    }
+    let uri_text = match read_uri_arg(uri) {
+        Ok(s) => s,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let parsed = match parse_playable(&uri_text) {
+        Ok(u) => u,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let track_id = parsed.to_id();
+    if art_path_for(&handle.art_dir, &track_id, 128).exists()
+        && art_path_for(&handle.art_dir, &track_id, 256).exists()
+    {
+        mem_insert(handle, &track_id);
+        let _ = handle.art_tx.send(uri_text);
+        return SPOTIFY_OK;
+    }
+    let session = handle.session.clone();
+    let art_dir = handle.art_dir.clone();
+    let tx = handle.art_tx.clone();
+    handle.rt.spawn(async move {
+        match fetch_and_store(&session, art_dir, track_id, uri_text.clone()).await {
+            Ok(()) => {
+                let _ = tx.send(uri_text);
+            }
+            Err(msg) => log::warn!("artwork fetch failed for {uri_text}: {msg}"),
+        }
+    });
+    SPOTIFY_OK
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_artwork_state(
+    player: *mut SpotifyPlayer,
+    uri: *const c_char,
+    size: std::os::raw::c_int,
+    ready_out: *mut std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if let Err((code, msg)) = check_connected(handle) {
+        return fail(code, msg);
+    }
+    if ready_out.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null ready out-pointer".to_owned());
+    }
+    let size_u = match check_art_size(size) {
+        Ok(s) => s,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let uri_text = match read_uri_arg(uri) {
+        Ok(s) => s,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let parsed = match parse_playable(&uri_text) {
+        Ok(u) => u,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let track_id = parsed.to_id();
+    if size_u == 128 {
+        mem_insert(handle, &track_id);
+    }
+    let mem_hit = match handle.art_mem.lock() {
+        Ok(mem) => size_u == 128 && mem.map.contains_key(&track_id),
+        Err(_) => return fail(SPOTIFY_ERR_INTERNAL, "artwork lock poisoned".to_owned()),
+    };
+    let ready = mem_hit || art_path_for(&handle.art_dir, &track_id, size_u).exists();
+    // SAFETY: null-checked above; caller provides storage.
+    unsafe {
+        *ready_out = i32::from(ready);
+    }
+    SPOTIFY_OK
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_artwork_path(
+    player: *mut SpotifyPlayer,
+    uri: *const c_char,
+    size: std::os::raw::c_int,
+    out: *mut c_char,
+    cap: std::os::raw::c_int,
+) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if let Err((code, msg)) = check_connected(handle) {
+        return fail(code, msg);
+    }
+    if out.is_null() || cap <= 0 {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null/short path buffer".to_owned());
+    }
+    let size_u = match check_art_size(size) {
+        Ok(s) => s,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let uri_text = match read_uri_arg(uri) {
+        Ok(s) => s,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let parsed = match parse_playable(&uri_text) {
+        Ok(u) => u,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let text = art_path_for(&handle.art_dir, &parsed.to_id(), size_u).to_string_lossy().into_owned();
+    if text.len() + 1 > cap as usize {
+        return fail(SPOTIFY_ERR_INTERNAL, "path buffer too small".to_owned());
+    }
+    // SAFETY: bounds-checked above; caller provides `cap` bytes.
+    unsafe {
+        std::ptr::copy_nonoverlapping(text.as_ptr() as *const c_char, out, text.len());
+        *out.add(text.len()) = 0;
+    }
     SPOTIFY_OK
 }
 
