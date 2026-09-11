@@ -43,7 +43,18 @@ bool Player::loadUri(const std::string& uri) {
 }
 
 bool Player::play() { return callOk(spotify_play(handle_)); }
-bool Player::pause() { return callOk(spotify_pause(handle_)); }
+
+// Optimistic: a successful pause means "not playing" even before the async
+// Paused event arrives, so toggles built on state() can't invert. Stale
+// Playing events are flushed first so they can't re-set the flag.
+bool Player::pause() {
+    if (!callOk(spotify_pause(handle_))) {
+        return false;
+    }
+    drainEvents();
+    state_.playing = false;
+    return true;
+}
 bool Player::resume() { return callOk(spotify_resume(handle_)); }
 
 bool Player::seek(uint32_t positionMs) {
