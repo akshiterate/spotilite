@@ -400,6 +400,15 @@ int main(int argc, char** argv) {
           "queue order after move");
     check(player.queue().current() == "spotify:track:aaa", "queue current follows move");
     check(!player.queue().move(9, 0), "queue move out of range fails");
+    // playFrom ordering (dummy URIs fail at load, but queue surgery is verifiable).
+    player.queue().clear();
+    player.enqueue("spotify:track:aaa");
+    player.enqueue("spotify:track:bbb");
+    player.enqueue("spotify:track:ccc");
+    check(!player.playFrom(5), "playFrom out of range fails");
+    check(!player.playFrom(1), "playFrom bad uri fails load");
+    check(player.queue().size() == 2, "playFrom discarded before");
+    check(player.queue().current() == "spotify:track:bbb", "playFrom selected current");
     player.queue().clear();
     player.enqueue("spotify:track:bbb");
     player.queue().insertAt(0, "spotify:track:aaa");
