@@ -1,8 +1,8 @@
 # Phase 10 Summary — Library
 
-> MID-PHASE CHECKPOINT 2 — Liked Songs + Playlists work (live verified).
-> Remaining subsections: 3. Albums, 4. Artists. Per the plan, STOPPING
-> here for user testing before continuing.
+> MID-PHASE CHECKPOINT 3 — Liked Songs, Playlists, Albums work (live
+> verified). Remaining: 4. Artists (needs a new scope + re-login — see
+> below). Per the plan, STOPPING here for user testing.
 
 ## Goal
 
@@ -64,14 +64,26 @@ lazy-loaded/paginated, never bulk-loaded at startup (plans.md Phase 10).
 - `cargo build --release` exit 0. (`cmake --build` re-verify at close.)
 - Scope: `include/`, `rust/`, `cpp/core/**`, `cpp/ui/**`, `docs/`.
 
+## Done in subsection 3 — Albums
+
+- Probed first: `/v1/me/albums` AND `/v1/albums/{id}/tracks` both work
+  (only playlist items are restricted), so albums stay pure Web API with
+  real totals — no context detour needed.
+- `spotify_albums` + `spotify_album_tracks` (URI or raw id),
+  `Player::albums/albumTracks`, core_test albums section with drill-in.
+- GUI: Albums button + ALBUM_TRACKS drill reusing the library view; Back
+  generalized (remembers mode + page instead of playlists-only).
+- Live: 2 saved albums listed; 44-track drill with real names; exit 0.
+- GUI relinked + smoke alive.
+
 ## How to test now
 
 1. `cmake --build build --config Release` (cmake+cargo on PATH).
 2. Relink core_test + gui.exe (g++ lines in file headers).
-3. `build/core_test.exe` → liked + playlists + playlist tracks.
-4. `build/gui.exe` → Liked (as before); Playlists → Open a row (Play) →
-   tracks listed → Back; Play/Add tracks at both levels.
-5. Report: drill-in correct? Back returns right? Play-from-playlist audible?
+3. `build/core_test.exe` → liked + playlists + drill + albums + drill.
+4. `build/gui.exe` → Liked / Playlists / Albums, drill into rows, Back,
+   Play/Add at every level.
+5. Report: drill-in correct? Back returns right? Play-from-library audible?
 
 ## librespot rev
 
@@ -82,5 +94,7 @@ Unchanged: `a1b66d3c`, defaults. No manifest change (no new deps).
 - `phase-10: Liked Songs end-to-end`
 - `phase-10: checkpoint Liked docs`
 - `phase-10: Playlists end-to-end`
-- `phase-10: checkpoint Playlists docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
+- `phase-10: checkpoint Playlists docs`
+- `phase-10: Albums end-to-end`
+- `phase-10: checkpoint Albums docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
 - Pushed to `origin/main`.

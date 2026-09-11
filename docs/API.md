@@ -166,6 +166,19 @@ for new apps) + concurrent metadata names; first page only. C++:
 `Player::playlists/playlistTracks`. GUI: LIKED/PLAYLISTS/TRACKS modes,
 drill-in Play, Back, mode-aware Play/Add.
 
+Phase 10.3 (current): saved albums, pure Web API (unrestricted):
+
+```c
+int spotify_albums(SpotifyPlayer*, int limit, int offset,
+                   SpotifySearchItem* items, int cap, int* total_out);
+int spotify_album_tracks(SpotifyPlayer*, const char* album, int limit,
+                         int offset, SpotifySearchItem* items, int cap,
+                         int* total_out);
+```
+
+C++: `Player::albums/albumTracks`. GUI: ALBUMS + ALBUM_TRACKS modes,
+Back remembers mode + page.
+
 Phase 9 (current): full queue in `cpp/core/queue.h` — add/clear/next/
 previous/select/at/removeAt/move (index follows its track; removing the
 playing row doesn't stop it). `Player::loadUri` resets; `playCurrent` /

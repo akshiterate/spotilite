@@ -235,3 +235,7 @@ Append-only log: date, decision, why, alternatives rejected.
   total -1 (unknown). List subtitle is owner-only (per-playlist totals
   read 0). GUI library generalized to LIKED/PLAYLISTS/TRACKS modes with
   drill-in Play, Back (page remembered), mode-aware Play/Add.
+- 2026-09-11 (Phase 10.3 Albums): probed first — both album endpoints
+  work, so pure Web API with real totals (no context detour). GUI drill
+  generalized with a remembered return mode/page; Back works from both
+  track views.
