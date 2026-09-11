@@ -61,3 +61,14 @@ Append-only log: date, decision, why, alternatives rejected.
   is `core::cache::Cache`; audio/mixer `find()` return `Option`;
   `Discovery` is a `Stream<Item = Credentials>`; `Cache::new` args share
   one generic type.
+- 2026-09-11 (Phase 1): Connect device name set explicitly to the project
+  name (`ConnectConfig::default().name` is literally `"librespot"`, which
+  is what users saw). Auto-activate on launch removed: starting the
+  receiver must not hijack playback already playing elsewhere; the user
+  transfers playback explicitly. Matches the plan's success flow.
+- 2026-09-11 (Phase 1, after audio verification): user requested the name
+  `spotilite` everywhere. Applied to `plans.md`, `README.md`, CMake
+  project/exe (`build/spotilite.exe`), `main.cpp` banner, headless
+  `DEVICE_NAME`/banner/comments. Closed records (`PHASE_-1/0` summaries,
+  earlier lines here) left as-was. Note: Spotify apps cache device names
+  per device id — restart the app if a stale name lingers after upgrade.

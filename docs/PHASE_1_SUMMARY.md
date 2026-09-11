@@ -1,9 +1,6 @@
 # Phase 1 Summary — librespot Playback Proof
 
-> MID-PHASE CHECKPOINT 2 (not the final Phase 1 report).
-> Receiver code complete, builds, smoke-tested. Awaiting USER manual test:
-> run the receiver, select it in the Spotify app, play a track, confirm
-> audio. Final `PHASE 1 COMPLETE` + docs polish after that confirmation.
+Final report. Audio playback verified by the user (see Verified).
 
 ## Goal
 
@@ -16,9 +13,11 @@ Prove Spotify playback works before building the application around it
 - `rust/librespot-bridge/src/bin/headless.rs`: minimal headless Connect
   receiver. Flow: stable device id (`device-id` file) + `Cache` under
   `%LOCALAPPDATA%\spotilite\cache` (outside repo, no secrets committable);
-  reuse cached credentials or advertise `Spotify-lite` via mDNS until the
-  official app provisions credentials; `Session` + rodio default sink +
-  soft mixer + `Player`; `Spirc` Connect device, `activate()`; Ctrl+C quits.
+  reuse cached credentials or advertise `spotilite` via mDNS until the
+  official app provisions credentials; `Session` + rodio default sink
+  (WASAPI) + soft mixer + `Player`; `Spirc` Connect device named
+  `spotilite`; no auto-activate (launch never hijacks existing playback);
+  Ctrl+C quits.
 - `rust/librespot-bridge/Cargo.toml`: added `tokio` (rt-multi-thread,
   macros, signal), `log`, `env_logger`, `futures-util`. librespot pin
   unchanged (`a1b66d3c`, defaults).
@@ -31,16 +30,23 @@ Prove Spotify playback works before building the application around it
 
 ## Verified
 
-- `cmake --build build --config Release` → `rust-bridge` + `spotify-lite`
-  succeed (exit 0), incl. new `headless` binary.
-- Smoke test: `target\release\headless.exe` ran 20s, printed banner +
-  advertising lines, stayed alive awaiting selection, no stderr errors.
-- `git status`: only bridge manifest, `Cargo.lock`, `src/bin/` touched.
-  Cache (`device-id`, `files/`) created only under `%LOCALAPPDATA%`.
-
-## NOT yet verified (requires user)
-
-Audio actually playing through Windows audio. See "How to test now".
+- `cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release` +
+  `cmake --build build --config Release` → `rust-bridge` + `spotilite`
+  succeed (exit 0); `build/spotilite.exe` prints `spotilite` /
+  `Build successful.`
+- `target\release\headless.exe` smoke-tested repeatedly: starts, uses
+  cached credentials, authenticates, stays alive, exits cleanly on kill.
+- USER manual test (required by plan): device visible in official app,
+  playback transferred, **audio audible through Windows audio (Realtek /
+  WASAPI)**. User confirmed "yes it works".
+- Incidents during user testing: (1) first run played faintly then the
+  process died — no log captured, never reproduced; if it recurs, capture
+  full terminal text before anything else. (2) Device initially showed as
+  `librespot` (pinned default `ConnectConfig.name`) — fixed by setting the
+  name explicitly. (3) Launch used to interrupt app playback
+  (`spirc.activate()`) — auto-activate removed. (4) Rebuilds fail with
+  `os error 5` while the receiver is running (exe locked) — close it
+  (Ctrl+C) before rebuilding.
 
 ## librespot rev
 
@@ -49,20 +55,36 @@ delta (tokio/log/env_logger/futures-util) committed separately per 1.16.
 
 ## How to test now
 
-1. Ensure `cargo` on PATH, then `cmake --build build --config Release`.
-2. Run `.\target\release\headless.exe` (first run: prints "Advertising as
-   Spotify-lite ...").
+1. Ensure `cmake` + `cargo` on PATH, then
+   `cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release`
+   and `cmake --build build --config Release`.
+2. Run `.\target\release\headless.exe` (close it with Ctrl+C before any
+   rebuild — the running exe locks the file).
 3. In the official Spotify app (same network, Premium): Connect to a device
-   -> `Spotify-lite`. Receiver prints "Credentials received..." then
-   "Connected as <you>."
-4. Play any track in the app. Sound must come from Windows audio.
-5. Ctrl+C quits. Second run reuses cached credentials (no re-select needed).
+   -> `spotilite`. (If a stale old name shows, restart the Spotify app
+   once — it caches device names per device id.)
+4. Play any track in the app. Sound comes from Windows audio.
+5. Ctrl+C quits. Later runs reuse cached credentials.
 
-Expected: device visible in app, playback transfers, audio audible.
+Expected: device visible as `spotilite`, playback transfers, audio audible.
+
+## Rename to `spotilite`
+
+After audio verification the user requested the name `spotilite`
+everywhere. Applied to `plans.md` (`Spotify-lite` x10, `spotify-lite` x7,
+`SPOTIFY-LITE` x1), `README.md` title, CMake project/exe
+(`build/spotilite.exe`), `main.cpp` banner, headless `DEVICE_NAME`/banner/
+comments. Closed historical docs (`PHASE_-1/0` summaries, earlier
+`DECISIONS.md` lines) intentionally left as-was (append-only records);
+details in `docs/DECISIONS.md`.
 
 ## Version control
 
-- `phase-1: add headless Connect receiver (discovery provisioning)`
-- `phase-1: Cargo.lock for receiver deps`
-- `phase-1: checkpoint 2 docs` (this file + `docs/DECISIONS.md`, `docs/API.md`)
-- Pushed to `origin/main`.
+- `1eb49e6 phase-1: add headless Connect receiver (discovery provisioning)`
+- `346cf7f phase-1: Cargo.lock for receiver deps`
+- `6f0ac1a phase-1: checkpoint 2 docs`
+- `b758cc1 phase-1: name Connect device Spotify-lite, no auto-activate on launch`
+- `phase-1: rename project to spotilite` (plans.md, README, CMake target,
+  main.cpp, headless device name)
+- `phase-1: finalize docs` (this file + `docs/DECISIONS.md`)
+- All pushed to `origin/main` at phase completion.
