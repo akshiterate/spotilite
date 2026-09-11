@@ -11,3 +11,9 @@ crate-type = ["staticlib", "rlib"]
 # Pinned per plans.md Phase 0 + 1.16 (exact rev + flags recorded in
 # docs/DECISIONS.md). Unused until Phase 1.
 librespot = { git = "https://github.com/librespot-org/librespot", rev = "a1b66d3c8a14e55a9572a9e17467150dca618c9a" }
+
+# Phase 1 headless receiver (src/bin/headless.rs).
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+log = "0.4"
+env_logger = "0.11"
+futures-util = "0.3"
