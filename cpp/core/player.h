@@ -95,6 +95,8 @@ private:
     bool callOk(int rc);
     bool loadCurrent();  // load queue_.current(), queue untouched
     void applyEvent(const PlayerEvent& event);
+    bool waitForEvent(int type, int timeoutMs);
+    // Drain until an event of `type` arrives or `timeoutMs` elapses.
 
     SpotifyPlayer* handle_ = nullptr;
     PlaybackState state_;

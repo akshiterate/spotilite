@@ -199,6 +199,14 @@ Append-only log: date, decision, why, alternatives rejected.
 - 2026-09-11 (Phase 8): Refresh responses often omit a new refresh token —
   the bridge preserved the cached one instead of overwriting with empty
   (the overwrite wiped a login mid-phase; fixed + re-logged-in).
+- 2026-09-11 (post-Phase 9 GUI bugfix round): three fixes from user testing.
+  (1) Seek slider never moved: live state overwrote the thumb every frame
+  (snap-back). Fixed with an IsItemActive-held drag value. (2) Volume
+  display lied (0.5 default vs cached mixer value): new
+  `spotify_get_volume` ABI (mixer.volume()) mirrored in `connect()`.
+  (3) Pause/Play toggle desync on event latency: `pause()`/`resume()` now
+  wait up to 300ms for the confirming event (draining in order) with an
+  optimistic fallback, so state is exact in the common case.
 - 2026-09-11 (post-Phase 9 GUI polish): ImGui window fills the OS window
   (NoTitleBar/NoResize/NoMove) — no more window-inside-a-window.
 - 2026-09-11 (post-Phase 9 GUI polish): Play-button dead end fixed —

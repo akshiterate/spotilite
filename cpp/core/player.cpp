@@ -1,7 +1,9 @@
 // Player implementation: thin stateful wrapper over the C ABI.
 #include "player.h"
 
+#include <chrono>
 #include <stdexcept>
+#include <thread>
 
 namespace spotilite {
 
@@ -27,6 +29,12 @@ bool Player::connect() {
         return false;
     }
     state_.connected = true;
+    // Adopt the real mixer volume: it may hold a cached value from a
+    // previous run, which the 0.5 default would otherwise misreport.
+    float actual = 0.0f;
+    if (spotify_get_volume(handle_, &actual) == SPOTIFY_OK) {
+        state_.volume = actual;
+    }
     return true;
 }
 
@@ -53,18 +61,28 @@ bool Player::loadCurrent() {
 
 bool Player::play() { return callOk(spotify_play(handle_)); }
 
-// Optimistic: a successful pause means "not playing" even before the async
-// Paused event arrives, so toggles built on state() can't invert. Stale
-// Playing events are flushed first so they can't re-set the flag.
+// Command confirmation beats event-latency guessing: wait briefly for the
+// expected event (draining everything in order), else fall back so the
+// toggle can never be left behind by a late event.
 bool Player::pause() {
     if (!callOk(spotify_pause(handle_))) {
         return false;
     }
-    drainEvents();
-    state_.playing = false;
+    if (!waitForEvent(SPOTIFY_EVENT_PAUSED, 300)) {
+        drainEvents();
+        state_.playing = false;
+    }
     return true;
 }
-bool Player::resume() { return callOk(spotify_resume(handle_)); }
+bool Player::resume() {
+    if (!callOk(spotify_resume(handle_))) {
+        return false;
+    }
+    if (!waitForEvent(SPOTIFY_EVENT_PLAYING, 300)) {
+        drainEvents();  // stay event-driven; nothing may be loaded
+    }
+    return true;
+}
 
 bool Player::seek(uint32_t positionMs) {
     return callOk(spotify_seek(handle_, positionMs));
@@ -216,6 +234,20 @@ int Player::drainEvents() {
         ++count;
     }
     return count;
+}
+
+bool Player::waitForEvent(int type, int timeoutMs) {
+    const auto end = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    do {
+        PlayerEvent event;
+        while (pollEvent(event)) {
+            if (event.type == type) {
+                return true;
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    } while (std::chrono::steady_clock::now() < end);
+    return false;
 }
 
 }  // namespace spotilite

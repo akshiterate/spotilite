@@ -79,6 +79,10 @@ int spotify_seek(SpotifyPlayer* player, uint32_t position_ms);
 // Set volume in [0.0, 1.0]; out-of-range values are clamped.
 int spotify_set_volume(SpotifyPlayer* player, float volume);
 
+// Read back the actual mixer volume (0.0..1.0). Useful at startup: the
+// mixer may hold a cached value from a previous run.
+int spotify_get_volume(SpotifyPlayer* player, float* out);
+
 // Player events. Drain with spotify_poll_event(); modelling is
 // intentionally coarse (commands own the queue, Phase 3/9).
 #define SPOTIFY_EVENT_NONE 0

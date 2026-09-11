@@ -458,15 +458,18 @@ void Gui::frame() {
     }
     ImGui::EndGroup();
 
-    // 5. Progress (seek on release).
+    // 5. Progress (seek on release). While dragged, the live state must
+    // not overwrite the thumb, or the slider snaps back and never seeks.
     if (durMs > 0) {
-        int posSec = static_cast<int>(s.positionMs / 1000);
-        const int durSec = static_cast<int>(durMs / 1000);
-        if (ImGui::SliderInt("##progress", &posSec, 0, durSec > 0 ? durSec : 1)) {
-            // live drag position only; seek happens on release below
+        if (!seekHeld_) {
+            seekPosSec_ = static_cast<int>(s.positionMs / 1000);
         }
+        const int durSec = static_cast<int>(durMs / 1000);
+        ImGui::SliderInt("##progress", &seekPosSec_, 0, durSec > 0 ? durSec : 1);
+        seekHeld_ = ImGui::IsItemActive();
         if (ImGui::IsItemDeactivatedAfterEdit()) {
-            if (!player_.seek(static_cast<uint32_t>(posSec) * 1000)) {
+            seekHeld_ = false;
+            if (!player_.seek(static_cast<uint32_t>(seekPosSec_) * 1000)) {
                 error_ = player_.lastError();
             }
         }

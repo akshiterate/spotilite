@@ -42,6 +42,8 @@ private:
     PendingSearch pendingSearch_;
     std::vector<SearchResult> searchResults_;
     int searchSel_ = 0;
+    int seekPosSec_ = 0;
+    bool seekHeld_ = false;
     std::string lastUri_;
     std::string error_;
 

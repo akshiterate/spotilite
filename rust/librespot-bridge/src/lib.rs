@@ -1263,6 +1263,25 @@ pub unsafe extern "C" fn spotify_search(
     }
     count as std::os::raw::c_int
 }
+#[no_mangle]
+pub unsafe extern "C" fn spotify_get_volume(
+    player: *mut SpotifyPlayer,
+    out: *mut c_float,
+) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if out.is_null() {
+        return fail(SPOTIFY_ERR_NULL_ARG, "null volume out-pointer".to_owned());
+    }
+    let raw = handle.mixer.volume();
+    // SAFETY: null-checked above; caller provides storage.
+    unsafe {
+        *out = raw as c_float / u16::MAX as c_float;
+    }
+    SPOTIFY_OK
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn spotify_last_error(player: *const SpotifyPlayer) -> *const c_char {
