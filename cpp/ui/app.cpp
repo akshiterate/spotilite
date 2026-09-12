@@ -1,16 +1,4 @@
-// App shell + entry point. Build (no CMake change — direct link):
-//   g++ -std=c++17 cpp/ui/app.cpp cpp/ui/queue_window.cpp
-//       cpp/ui/search_window.cpp cpp/ui/playlists_window.cpp
-//       cpp/ui/content_window.cpp cpp/ui/settings_window.cpp
-//       cpp/ui/window_placer.cpp cpp/core/player.cpp
-//       third_party/imgui/imgui.cpp third_party/imgui/imgui_draw.cpp
-//       third_party/imgui/imgui_tables.cpp third_party/imgui/imgui_widgets.cpp
-//       third_party/imgui/backends/imgui_impl_win32.cpp
-//       third_party/imgui/backends/imgui_impl_dx11.cpp
-//       -Iinclude -Icpp -Ithird_party/imgui -Ithird_party/imgui/backends
-//       target/release/liblibrespot_bridge.a -o build/gui.exe
-//       -lws2_32 -luserenv -lbcrypt -lole32 -loleaut32 -lpropsys -lntdll
-//       -ld3d11 -ld3dcompiler -ldwmapi -lgdi32 -luser32 -lkernel32 -limm32 -liphlpapi
+// App shell + entry point. Build via build.ps1 (single source of truth).
 #include "ui/app.h"
 
 #include <windows.h>
