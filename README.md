@@ -39,19 +39,15 @@ cmake -S . -B build -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-Test/console binaries link directly against the Rust staticlib, e.g.:
+Test/console binaries, the TUI and the GUI all build through one script
+(static linking, so the exes run without MinGW installed, then stripped):
 
 ```powershell
-g++ -std=c++17 cpp/core/core_test.cpp cpp/core/player.cpp -Iinclude -Icpp target/release/liblibrespot_bridge.a -o build/core_test.exe -lws2_32 -luserenv -lbcrypt -lole32 -loleaut32 -lpropsys -lntdll
+powershell -ExecutionPolicy Bypass -File build.ps1
 ```
 
-The GUI link line is in `cpp/ui/app.cpp` (header comment). Release
-binaries add `-static` (no MinGW DLLs needed) and are `strip`ped:
-
-```powershell
-g++ -std=c++17 -static <same sources/libs as above> -o build/gui.exe <same libs>
-strip build/gui.exe
-```
+This configures + builds via CMake/Cargo and links + strips
+`core_test`, `tui`, `bridge_test` and `gui` into `build/`.
 
 ## Troubleshooting
 
