@@ -20,6 +20,9 @@ Phase 2: C ABI in `include/spotify_bridge.h`, implemented in
 SpotifyPlayer* spotify_create(void);
 void spotify_destroy(SpotifyPlayer*);
 int spotify_connect(SpotifyPlayer*);
+int spotify_begin_provisioning(SpotifyPlayer*);  // advertise until tapped
+int spotify_poll_provisioning(SpotifyPlayer*);   // 1 ready / 0 waiting / <0 error
+int spotify_cancel_provisioning(SpotifyPlayer*);
 int spotify_load_uri(SpotifyPlayer*, const char* uri);
 int spotify_play(SpotifyPlayer*);
 int spotify_pause(SpotifyPlayer*);
@@ -31,7 +34,7 @@ const char* spotify_last_error(const SpotifyPlayer*);
 ```
 
 Return codes: `SPOTIFY_OK 0`, `NULL_ARG -1`, `NOT_CONNECTED -2`,
-`AUTH -3`, `BAD_URI -4`, `AUDIO -5`, `INTERNAL -6`.
+`AUTH -3`, `BAD_URI -4`, `AUDIO -5`, `INTERNAL -6`, `NO_CREDENTIALS -7`.
 Deliberately no next/previous: no C++-drivable queue on Player in 0.8.
 
 Ownership: create/destroy pairing, NULL-safe destroy; strings copied in;
@@ -39,8 +42,12 @@ last-error pointer borrowed until next failing call on the same thread.
 Threading: synchronous calls, safe from any thread, no concurrent destroy;
 connect blocks on network, other calls return after handing commands to
 the player thread (async playback errors via Phase 3 polling, not codes).
-Credentials: machine-local Phase 1 cache, same device id; connect is
-idempotent; missing cache fails with AUTH + message.
+Credentials: machine-local discovery blob, same device id; connect is
+idempotent; no usable cache fails with NO_CREDENTIALS (provision first).
+OAuth-derived blobs are dropped: they AP-connect but never satisfy
+login5-backed operations (verified live). Connect pre-flights
+`login5().auth_token()` so dead blobs surface as re-provisioning instead
+of half-working playback.
 
 Phase 3: added event polling (foreseen by 1.7, additive only —
 no existing signature changed):
@@ -93,6 +100,7 @@ typedef struct SpotifyMetadata {
     uint32_t duration_ms; char uri[128]; char track_id[32];
 } SpotifyMetadata;
 int spotify_current_metadata(SpotifyPlayer*, SpotifyMetadata*);
+int spotify_metadata_for_uri(SpotifyPlayer*, const char* uri, SpotifyMetadata*);
 ```
 
 C++: `spotilite::TrackMetadata` + `Player::metadata()` (bool +
@@ -203,13 +211,17 @@ normalisation, volume (0..1), cache_size_mb. Rust-only parsing
 
 ```c
 int spotify_config_summary(char* out, int cap);
+int spotify_config_get(const char* key, char* out, int cap);
+int spotify_config_set(const char* key, const char* value);  // strict, persists
 ```
 
 Phase 9 (current): full queue in `cpp/core/queue.h` — add/clear/next/
-previous/select/at/removeAt/move (index follows its track; removing the
-playing row doesn't stop it). `Player::loadUri` resets; `playCurrent` /
-`next` / `previous` navigate preserving the queue. GUI: Add URI, Del,
-Up/Down, Add-to-queue from results; Play selected keeps the queue.
+previous/select/at/removeAt/move/insertAt/shuffleUpcoming (index follows
+its track; removing the playing row doesn't stop it). `Player::loadUri`
+resets; `playCurrent` / `next` / `previous` navigate preserving the
+queue; `playFirst` inserts on top + plays; `playFrom(i)` drops rows
+before i and plays it. GUI: Add URI, Del, Up/Down, Add-to-queue from
+results; Play selected keeps the queue.
 
 Phase 7 (current): GUI `build/gui.exe` (`cpp/ui/gui.*`, Win32 + DX11,
 Dear ImGui v1.92.9b vendored) over the core only. URI input + Play,
