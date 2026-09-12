@@ -24,6 +24,7 @@ use librespot::{
         authentication::AuthenticationError,
         cache::Cache,
         config::{DeviceType, SessionConfig},
+        error::ErrorKind,
         session::Session,
         SpotifyUri,
     },
@@ -387,8 +388,31 @@ pub unsafe extern "C" fn spotify_connect(player: *mut SpotifyPlayer) -> std::os:
         if cached.username.is_some() {
             match handle.rt.block_on(handle.session.connect(cached, true)) {
                 Ok(()) => {
-                    handle.connected.store(true, Ordering::SeqCst);
-                    return SPOTIFY_OK;
+                    // Pre-flight: AP login can succeed while login5
+                    // (metadata, context, audio) rejects dead stored
+                    // credentials. Probe it now so a dead blob surfaces as
+                    // re-provisioning instead of half-working playback.
+                    match handle.rt.block_on(handle.session.login5().auth_token()) {
+                        Ok(_) => {
+                            handle.connected.store(true, Ordering::SeqCst);
+                            return SPOTIFY_OK;
+                        }
+                        Err(e)
+                            if matches!(
+                                e.kind,
+                                ErrorKind::FailedPrecondition
+                                    | ErrorKind::Unauthenticated
+                                    | ErrorKind::PermissionDenied
+                            ) =>
+                        {
+                            drop_cached_blob();
+                        }
+                        // Transient: stay connected; operations surface errors.
+                        Err(_) => {
+                            handle.connected.store(true, Ordering::SeqCst);
+                            return SPOTIFY_OK;
+                        }
+                    }
                 }
                 Err(e) if login_failed(&e) => drop_cached_blob(),
                 Err(e) => {

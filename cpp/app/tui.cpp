@@ -1,7 +1,7 @@
 // TUI implementation + entry point. Build (no CMake change — direct link):
 //   g++ -std=c++17 cpp/app/tui.cpp cpp/core/player.cpp -Iinclude -Icpp
 //       target/release/liblibrespot_bridge.a -o build/tui.exe
-//       -lws2_32 -luserenv -lbcrypt -lole32 -loleaut32 -lpropsys -lntdll
+//       -lws2_32 -luserenv -lbcrypt -lole32 -loleaut32 -lpropsys -lntdll -liphlpapi
 #include "app/tui.h"
 
 #include <chrono>

@@ -270,6 +270,13 @@ Append-only log: date, decision, why, alternatives rejected.
   auto-opened, login completed, connect/play/pause/destroy all green,
   credentials primed. README first-run section rewritten around it
   (headless demoted to speaker-mode option).
+- 2026-09-11 (auth correctness): OAuth-token sessions AP-connect but are
+  denied by login5, so metadata/context/audio silently die. Fix: connect
+  pre-flights `login5().auth_token()`; rejection deletes the blob and
+  reports NO_CREDENTIALS (re-provision via tap). Discovery blobs are the
+  only working session type; OAuth tokens stay Web-API-only. Verified:
+  dead blob detected + deleted, clean NO_CREDENTIALS instead of
+  half-working playback. All staticlib consumers now also link iphlpapi.
 - 2026-09-11 (UI feedback round 6): main window spread + centered
   (nav/artwork/title/slider/controls/volume), hero artwork 192px from
   the cached 256px file, 90%-width slider, large fixed-size transport

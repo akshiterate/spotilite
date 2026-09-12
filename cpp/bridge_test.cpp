@@ -4,7 +4,7 @@
 // spotify_last_error(). Build (no CMake change — direct link):
 //   g++ cpp/bridge_test.cpp -Iinclude target/release/liblibrespot_bridge.a
 //       -o build/bridge_test.exe -lws2_32 -luserenv -lbcrypt -lole32
-//       -loleaut32 -lpropsys -lntdll
+//       -loleaut32 -lpropsys -lntdll -liphlpapi
 // (COM/prop-sys libs are needed by cpal/rodio inside the staticlib.)
 
 #include <iostream>
