@@ -1,23 +1,14 @@
-# spotilite
+# spotilite - my first fully "vibecoded" project for personal use
 
 A very lightweight native Spotify Premium client for Windows (Linux support later).
 C++ app + Rust/librespot bridge, no Electron/Chromium/WebView. See `plans.md` for the full plan.
 
 ## Download & run (no install)
-
-1. Get `spotilite-vX.Y.Z-windows-x86_64.zip` from the
-   [releases page](https://github.com/akshiterate/spotilite/releases) and
-   unzip it anywhere. No installer, no admin rights, no extra runtimes.
-2. Run `gui.exe`. First launch needs a one-time Spotify login: press Play
-   (or Search anything) and a browser window opens — log in, and the app
-   connects. It asks for `SPOTILITE_CLIENT_ID` first — create a free app
-   at <https://developer.spotify.com/dashboard>, allowlist the redirect
-   `http://127.0.0.1:8898/login`, and paste the Client ID (release builds
-   may bake one in, skipping this step). Afterwards cached credentials
-   are reused; the ID is never stored in the repo.
-3. `headless.exe` is the optional Connect-speaker mode: it advertises as
-   `spotilite`; pick it under "Connect to a device" in the official
-   Spotify app to provision it.
+1. download spotilite.exe from the release
+2. open it up and open the spotify client(app) for windows, ideally you will see spotilite as a device u can play songs on in the device menu click on spotilite and close spotify app (you can even close it from the background in task manager)
+3. hopefully after this when you try to search something or see your playlists a browser window opens for you to log in then the app saves the cache from the login and uses it to fetch the meta data of the songs
+4. once u press play u can hear the playback from librespot[https://github.com/librespot-org/librespot] it has been integrated into the app.
+5. you can use space for play/pause, ctrl+n for next, ctrl+p for prev.
 
 State (credentials, cache, config) lives under
 `%LOCALAPPDATA%\spotilite\` — nothing is written next to the exe.
