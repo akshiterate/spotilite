@@ -344,3 +344,24 @@ Append-only log: date, decision, why, alternatives rejected.
   id — no env, no file deleting. Followed paging is cursor-based, walked
   internally to keep the offset ABI uniform. Artist top tracks via context
   (shared helper with playlist tracks), first page, total -1.
+- 2026-09-12 (next-button runaway): user runs `build/dist/spotilite.exe`
+  with a multi-track queue; one press on `>>` skipped through the queue.
+  Handoff H1 (Enter re-triggering the focused button) excluded by code:
+  `NavEnableKeyboard` is never set (`cpp/ui/app.cpp` sets only
+  `ViewportsEnable`), and `imgui.cpp` gates Enter/Space nav-activation on
+  that flag, so Enter cannot activate buttons; Space never reaches ImGui
+  (low-level hook swallows it). Fixed the H2-class defects instead, all in
+  `App::updateShared`/`queueNext`/`queuePrev` (`cpp/ui/app.cpp`): (1) empty
+  TRACK_ENDED URIs no longer auto-advance (they carry no track identity);
+  (2) at most one auto-advance per frame so a stale burst spreads across
+  frames instead of running the queue in one drain; (3) non-terminal
+  auto-advance failures now surface in `error_` (end-of-queue stays
+  silent); (4) `>>`/`<<` funnel through `queueNext`/`queuePrev` as
+  `app.h` already documents, with stderr traces
+  (`[spotilite] next/prev/auto-advance ...`) for field diagnosis.
+  Rejected: swallowing Enter in the hook (would break keyboard access to
+  non-transport buttons for no proven benefit while nav stays disabled).
+  Note: `build.ps1` never refreshes `build/dist/spotilite.exe`, so the dist
+  copy was stale (hash mismatch vs `build/gui.exe`); re-synced manually
+  after this build. Single-track queue + end-of-queue still stop cleanly
+  (verified by `core_test` queue ordering checks).

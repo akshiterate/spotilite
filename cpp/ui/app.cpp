@@ -443,15 +443,33 @@ void App::updateShared() {
     }
     // Events drive state; artwork texture follows READY events.
     PlayerEvent event;
+    // At most one auto-advance per frame: a failing track still moves on
+    // (next frame its own ENDED arrives), but a burst of stale ENDEDs can
+    // never run through the whole queue in a single drain.
+    bool advancedThisFrame = false;
     while (player_.pollEvent(event)) {
         // Queue progression: a finished track advances automatically when
         // it is still current (a manual skip already moved on otherwise).
-        if (event.type == SPOTIFY_EVENT_TRACK_ENDED &&
-            (event.uri.empty() || event.uri == player_.state().currentUri)) {
+        // Empty URIs never match: they carry no track identity (position
+        // updates), and advancing on them chain-skips.
+        if (event.type == SPOTIFY_EVENT_TRACK_ENDED && !advancedThisFrame &&
+            !event.uri.empty() && event.uri == player_.state().currentUri) {
             // Auto-advance; keep the queue-window highlight glued to the
             // same track (the list shifts up by one underneath it).
-            if (player_.next() && queueUpSel_ > 0) {
-                --queueUpSel_;
+            const std::size_t from = player_.queue().index();
+            if (player_.next()) {
+                advancedThisFrame = true;
+                if (queueUpSel_ > 0) {
+                    --queueUpSel_;
+                }
+                fprintf(stderr, "[spotilite] auto-advance %zu -> %zu (%s)\n", from,
+                        player_.queue().index(), player_.state().currentUri.c_str());
+            } else if (player_.lastError() != "at end of queue") {
+                // Terminal failure (e.g. load failed) is surfaced; reaching
+                // the end of the queue stays silent by design.
+                error_ = player_.lastError();
+                fprintf(stderr, "[spotilite] auto-advance failed at %zu: %s\n", from,
+                        error_.c_str());
             }
         }
         if (event.type == SPOTIFY_EVENT_ARTWORK_READY && !event.uri.empty() &&
@@ -660,9 +678,7 @@ void App::frame() {
         const float rowW = 64.0f + 110.0f + 64.0f + spacingX * 2;
         centerX(rowW);
         if (ImGui::Button("<<", ImVec2(64, 52))) {
-            if (!player_.previous()) {
-                error_ = player_.lastError();
-            }
+            queuePrev();
         }
         ImGui::SameLine();
         if (ImGui::Button(s.playing ? "Pause##toggle" : "Play##toggle", ImVec2(110, 52))) {
@@ -670,9 +686,7 @@ void App::frame() {
         }
         ImGui::SameLine();
         if (ImGui::Button(">>", ImVec2(64, 52))) {
-            if (!player_.next()) {
-                error_ = player_.lastError();
-            }
+            queueNext();
         }
     }
 
@@ -754,18 +768,26 @@ void App::togglePlayPause() {
 }
 
 void App::queueNext() {
+    const std::size_t from = player_.queue().index();
     if (player_.next()) {
         error_.clear();
+        fprintf(stderr, "[spotilite] next %zu -> %zu (%s)\n", from,
+                player_.queue().index(), player_.state().currentUri.c_str());
     } else {
         error_ = player_.lastError();
+        fprintf(stderr, "[spotilite] next failed at %zu: %s\n", from, error_.c_str());
     }
 }
 
 void App::queuePrev() {
+    const std::size_t from = player_.queue().index();
     if (player_.previous()) {
         error_.clear();
+        fprintf(stderr, "[spotilite] prev %zu -> %zu (%s)\n", from,
+                player_.queue().index(), player_.state().currentUri.c_str());
     } else {
         error_ = player_.lastError();
+        fprintf(stderr, "[spotilite] prev failed at %zu: %s\n", from, error_.c_str());
     }
 }
 
