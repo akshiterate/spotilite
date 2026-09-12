@@ -365,3 +365,18 @@ Append-only log: date, decision, why, alternatives rejected.
   copy was stale (hash mismatch vs `build/gui.exe`); re-synced manually
   after this build. Single-track queue + end-of-queue still stop cleanly
   (verified by `core_test` queue ordering checks).
+- 2026-09-12 (prev-bounce, diagnosed from console log): after the above
+  fix the log showed `prev 21 -> 20` instantly bounced by
+  `auto-advance 20 -> 21`, repeating until the user spammed prev. Root
+  cause: one track ending emits several ENDED variants (the bridge maps
+  `EndOfTrack | Unavailable | Stopped` to a single code,
+  `rust/librespot-bridge/src/lib.rs` `map_event`), so a late duplicate
+  ENDED for an already-ended track can arrive later. Normally harmless
+  (URI no longer current), but navigating back to that track first makes
+  the URI match and bounces the user forward — the URI guard cannot tell
+  a stale duplicate from a fresh end. Fix in `App::updateShared`
+  (`cpp/ui/app.cpp`, new `App::endedAt_` in `cpp/ui/app.h`): an ENDED for
+  a URI auto-advanced away from within the last 10 s is ignored as a
+  duplicate (logged as `auto-advance ignored stale end`); a genuine re-end
+  needs a full replay, far outside the window. Manual next/prev are never
+  filtered. Dist copy re-synced again (same staleness trap as above).

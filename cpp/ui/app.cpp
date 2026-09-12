@@ -454,11 +454,30 @@ void App::updateShared() {
         // updates), and advancing on them chain-skips.
         if (event.type == SPOTIFY_EVENT_TRACK_ENDED && !advancedThisFrame &&
             !event.uri.empty() && event.uri == player_.state().currentUri) {
+            // Duplicate-end filter: one track ending emits several ENDED
+            // variants (EndOfTrack/Stopped/Unavailable share one code), and
+            // a late duplicate is harmless unless the user navigated back to
+            // that track first — then the URI matches and it would bounce
+            // them forward spuriously. An ENDED for a URI we already ended
+            // within the last 10 s is such a duplicate; a genuine re-end
+            // needs a full replay (minutes), so ignoring it is safe.
+            const auto now = std::chrono::steady_clock::now();
+            auto seen = endedAt_.find(event.uri);
+            if (seen != endedAt_.end() &&
+                now - seen->second < std::chrono::seconds(10)) {
+                fprintf(stderr, "[spotilite] auto-advance ignored stale end (%s)\n",
+                        event.uri.c_str());
+                continue;
+            }
             // Auto-advance; keep the queue-window highlight glued to the
             // same track (the list shifts up by one underneath it).
             const std::size_t from = player_.queue().index();
             if (player_.next()) {
                 advancedThisFrame = true;
+                if (endedAt_.size() > 200) {
+                    endedAt_.clear();
+                }
+                endedAt_[event.uri] = now;
                 if (queueUpSel_ > 0) {
                     --queueUpSel_;
                 }

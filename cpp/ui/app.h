@@ -89,6 +89,10 @@ private:
     int libBackPage_ = 0;
     int seekPosSec_ = 0;
     bool seekHeld_ = false;
+    // Duplicate-end filter: URIs auto-advanced away from + when, so a late
+    // duplicate TRACK_ENDED can't bounce the user forward after they
+    // navigate back (see updateShared). Capped like nameCache_ below.
+    std::map<std::string, std::chrono::steady_clock::time_point> endedAt_;
     // Stall watchdog: last observed playback point + recovery tracking.
     uint32_t stallPosMs_ = 0;
     std::chrono::steady_clock::time_point stallTime_{};
