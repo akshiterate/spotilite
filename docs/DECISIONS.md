@@ -261,6 +261,12 @@ Append-only log: date, decision, why, alternatives rejected.
   content was still loading, so search/playlists/content windows stayed
   tiny. They now refit once when rows land (size flags consumed before
   Begin).
+- 2026-09-11 (audio resilience): librespot builds its audio sink exactly
+  once per Player, so a dead sink (unplugged device, driver glitch)
+  never heals without a restart. `Player::recoverPlayback()` rebuilds
+  the Rust player on the live session and resumes in place (queue kept);
+  a GUI watchdog triggers it after 10s of frozen position while playing,
+  once per track.
 - 2026-09-11 (release UX): normal users never touch headless —
   `spotify_connect` falls back to the search PKCE browser flow when no
   session cache exists (new `streaming` scope; `DEFAULT_CLIENT_ID` const

@@ -108,6 +108,10 @@ public:
                          int& total);
     bool artistTracks(const std::string& artistIdOrUri, int limit, int offset,
                       std::vector<SearchResult>& out, int& total);
+    // Nuclear recovery for a dead audio sink (e.g. device unplugged):
+    // rebuilds the Rust player on the live session and resumes the
+    // current track where it was. Queue preserved.
+    bool recoverPlayback();
     void enqueue(const std::string& uri);
 
     // Drain one event into `out` and apply it to state(); true if an event

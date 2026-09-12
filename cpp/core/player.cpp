@@ -353,6 +353,39 @@ bool Player::playFirst(const std::string& uri) {
 
 void Player::enqueue(const std::string& uri) { queue_.add(uri); }
 
+bool Player::recoverPlayback() {
+    // Snapshot playback state (queue lives here, so it survives).
+    std::vector<std::string> rows;
+    for (std::size_t i = 0; i < queue_.size(); ++i) {
+        rows.push_back(queue_.at(i));
+    }
+    const std::size_t index = queue_.index();
+    const uint32_t position = state_.positionMs;
+    const float volume = state_.volume;
+    // Rebuild the Rust player (fresh audio sink) on the same credentials.
+    spotify_destroy(handle_);
+    handle_ = spotify_create();
+    if (handle_ == nullptr) {
+        lastError_ = spotify_last_error(nullptr);
+        return false;
+    }
+    queue_.clear();
+    for (const auto& uri : rows) {
+        queue_.add(uri);
+    }
+    queue_.select(index < queue_.size() ? index : 0);
+    if (!connect()) {
+        return false;
+    }
+    if (!loadCurrent()) {
+        return false;
+    }
+    if (position > 2000 && !seek(position)) {
+        return false;
+    }
+    return setVolume(volume);
+}
+
 void Player::applyEvent(const PlayerEvent& event) {
     switch (event.type) {
         case SPOTIFY_EVENT_TRACK_STARTED:

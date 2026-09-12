@@ -468,6 +468,28 @@ void App::updateShared() {
         onTrackChanged(cur);
     }
     pollMetadata();
+
+    // Stall watchdog: playing but position frozen means the sink died
+    // (device unplugged, driver glitch). Recover once per track.
+    const PlaybackState& st = player_.state();
+    const auto now = std::chrono::steady_clock::now();
+    if (st.playing && !st.currentUri.empty()) {
+        if (st.currentUri != stallUri_) {
+            stallUri_ = st.currentUri;
+            stallPosMs_ = st.positionMs;
+            stallTime_ = now;
+        } else if (st.positionMs != stallPosMs_) {
+            stallPosMs_ = st.positionMs;
+            stallTime_ = now;
+        } else if (st.positionMs > 0 && now - stallTime_ > std::chrono::seconds(10) &&
+                   stallUri_ != stallRecoveredUri_) {
+            stallRecoveredUri_ = st.currentUri;
+            player_.recoverPlayback();
+        }
+    } else {
+        stallUri_.clear();
+        stallPosMs_ = 0;
+    }
 }
 
 void App::frame() {

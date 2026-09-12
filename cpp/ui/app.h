@@ -6,6 +6,7 @@
 
 #include <d3d11.h>
 
+#include <chrono>
 #include <future>
 #include <map>
 #include <string>
@@ -88,6 +89,11 @@ private:
     int libBackPage_ = 0;
     int seekPosSec_ = 0;
     bool seekHeld_ = false;
+    // Stall watchdog: last observed playback point + recovery tracking.
+    uint32_t stallPosMs_ = 0;
+    std::chrono::steady_clock::time_point stallTime_{};
+    std::string stallUri_;
+    std::string stallRecoveredUri_;
     // Non-blocking startup: connect runs on a worker, adopted onready.
     std::future<std::pair<bool, std::string>> connectFuture_;
     bool connectStarted_ = false;
