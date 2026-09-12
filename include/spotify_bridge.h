@@ -48,6 +48,7 @@ typedef struct SpotifyPlayer SpotifyPlayer;
 #define SPOTIFY_ERR_BAD_URI -4
 #define SPOTIFY_ERR_AUDIO -5
 #define SPOTIFY_ERR_INTERNAL -6
+#define SPOTIFY_ERR_NO_CREDENTIALS -7
 
 // Create a player (runtime, session, mixer, audio sink). Returns NULL on
 // failure; check spotify_last_error(NULL).
@@ -56,10 +57,19 @@ SpotifyPlayer* spotify_create(void);
 // Destroy a player. NULL-safe.
 void spotify_destroy(SpotifyPlayer* player);
 
-// Connect: cached credentials if present, else a one-time PKCE browser
-// login (same flow as search; needs a client id via env/baked default).
-// Idempotent: returns OK if already connected.
+// Connect with provisioned (discovery-blob) credentials. Fails with
+// SPOTIFY_ERR_NO_CREDENTIALS when nothing usable is cached — provision
+// first (below). OAuth-derived blobs are dropped: they AP-connect but
+// never satisfy login5-backed operations. Idempotent once connected.
 int spotify_connect(SpotifyPlayer* player);
+
+// First-run provisioning: advertise via zeroconf until the official app
+// provisions this device, then spotify_connect() succeeds. Non-blocking;
+// poll for completion. Any previous attempt is cleanly replaced.
+int spotify_begin_provisioning(SpotifyPlayer* player);
+// 1 = provisioned (now call spotify_connect), 0 = still waiting.
+int spotify_poll_provisioning(SpotifyPlayer* player);
+int spotify_cancel_provisioning(SpotifyPlayer* player);
 
 // Load a playable URI (spotify:track:... / spotify:episode:...) and start
 // playing it from the beginning. Requires a prior spotify_connect().

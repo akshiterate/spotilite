@@ -92,6 +92,10 @@ private:
     std::future<std::pair<bool, std::string>> connectFuture_;
     bool connectStarted_ = false;
     bool connectFailed_ = false;
+    // First-run provisioning (no usable credentials): detected from the
+    // stable connect error prefix (same string as the bridge message).
+    bool provNeeded_ = false;
+    bool provisioning_ = false;
     // Refit-once flags: async content can land after auto-size ran.
     bool sizeSearch_ = false;
     bool sizePlaylists_ = false;

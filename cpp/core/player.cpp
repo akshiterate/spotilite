@@ -44,6 +44,22 @@ void Player::adoptConnected() {
     }
 }
 
+bool Player::beginProvisioning() {
+    return callOk(spotify_begin_provisioning(handle_));
+}
+
+int Player::pollProvisioning() {
+    const int rc = spotify_poll_provisioning(handle_);
+    if (rc < 0) {
+        lastError_ = spotify_last_error(handle_);
+    }
+    return rc;
+}
+
+bool Player::cancelProvisioning() {
+    return callOk(spotify_cancel_provisioning(handle_));
+}
+
 bool Player::loadUri(const std::string& uri) {
     queue_.clear();
     queue_.add(uri);

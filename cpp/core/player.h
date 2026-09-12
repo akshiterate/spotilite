@@ -67,6 +67,10 @@ public:
     // UI thread, then adoptConnected() on the UI thread once it is done.
     bool connectBlocking();
     void adoptConnected();
+    bool beginProvisioning();
+    // 1 = provisioned (now connect), 0 = waiting, -1 = error in lastError.
+    int pollProvisioning();
+    bool cancelProvisioning();
     bool loadUri(const std::string& uri);
     bool play();
     bool pause();

@@ -10,7 +10,7 @@
 //       -Iinclude -Icpp -Ithird_party/imgui -Ithird_party/imgui/backends
 //       target/release/liblibrespot_bridge.a -o build/gui.exe
 //       -lws2_32 -luserenv -lbcrypt -lole32 -loleaut32 -lpropsys -lntdll
-//       -ld3d11 -ld3dcompiler -ldwmapi -lgdi32 -luser32 -lkernel32 -limm32
+//       -ld3d11 -ld3dcompiler -ldwmapi -lgdi32 -luser32 -lkernel32 -limm32 -liphlpapi
 #include "ui/app.h"
 
 #include <windows.h>
@@ -449,6 +449,8 @@ void App::updateShared() {
             connectStarted_ = false;  // Retry relaunches from the UI.
             connectFailed_ = true;
             error_ = error;
+            // Stable bridge message (see spotify_connect docs): first run.
+            provNeeded_ = error.rfind("no Spotify credentials provisioned", 0) == 0;
         }
     }
     // Events drive state; artwork texture follows READY events.
@@ -562,10 +564,39 @@ void App::frame() {
     if (!player_.state().connected && !connectFailed_) {
         centerText("Connecting...");
     }
-    if (connectFailed_) {
-        centerText("Connect failed.");
-        centerX(80.0f);
-        if (ImGui::Button("Retry", ImVec2(80, 0))) {
+    if (connectFailed_ && provNeeded_) {
+        ImGui::Text("First run: open Spotify, go to Connect to a device,");
+        ImGui::Text("and select spotilite.");
+        if (!provisioning_) {
+            if (player_.beginProvisioning()) {
+                provisioning_ = true;
+            } else {
+                error_ = player_.lastError();
+            }
+        } else {
+            const int provisioned = player_.pollProvisioning();
+            if (provisioned > 0) {
+                // Hand back to the async connect path (no UI hitch).
+                provisioning_ = false;
+                connectFailed_ = false;
+                provNeeded_ = false;
+                connectStarted_ = false;
+                error_.clear();
+            } else if (provisioned < 0) {
+                provisioning_ = false;
+                error_ = player_.lastError();
+            } else {
+                ImGui::Text("Waiting for selection...");
+            }
+        }
+        if (ImGui::Button("Cancel")) {
+            player_.cancelProvisioning();
+            provisioning_ = false;
+        }
+    } else if (connectFailed_) {
+        ImGui::Text("Connect failed.");
+        ImGui::SameLine();
+        if (ImGui::Button("Retry")) {
             connectStarted_ = false;
             connectFailed_ = false;
             error_.clear();

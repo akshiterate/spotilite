@@ -21,12 +21,13 @@ use std::sync::{
 
 use librespot::{
     core::{
-        authentication::{AuthenticationError, Credentials},
+        authentication::AuthenticationError,
         cache::Cache,
-        config::SessionConfig,
+        config::{DeviceType, SessionConfig},
         session::Session,
         SpotifyUri,
     },
+    discovery::Discovery,
     metadata::{Episode, Metadata, Track},
     playback::{
         audio_backend,
@@ -56,6 +57,14 @@ pub struct SpotifyPlayer {
     art_rx: Mutex<tokio::sync::mpsc::UnboundedReceiver<String>>,
     art_mem: Mutex<ArtFifo>,
     web_token: Mutex<Option<OAuthToken>>,
+    prov: Mutex<Option<ProvState>>,
+}
+
+// Pending zeroconf provisioning: the discovery task (which owns the
+// advertiser) plus its completion signal.
+struct ProvState {
+    done: tokio::sync::oneshot::Receiver<()>,
+    task: tokio::task::JoinHandle<()>,
 }
 
 // Small in-memory artwork cache: 128px BMP bytes keyed by track id, FIFO
@@ -136,6 +145,7 @@ const SPOTIFY_ERR_BAD_URI: std::os::raw::c_int = -4;
 #[allow(dead_code)]
 const SPOTIFY_ERR_AUDIO: std::os::raw::c_int = -5;
 const SPOTIFY_ERR_INTERNAL: std::os::raw::c_int = -6;
+const SPOTIFY_ERR_NO_CREDENTIALS: std::os::raw::c_int = -7;
 
 /// Crate version smoke-test symbol (kept from Phase 0).
 pub fn bridge_version() -> &'static str {
@@ -322,6 +332,7 @@ pub unsafe extern "C" fn spotify_create() -> *mut SpotifyPlayer {
                 order: VecDeque::new(),
             }),
             web_token: Mutex::new(None),
+            prov: Mutex::new(None),
         };
         Ok(Box::into_raw(Box::new(handle)))
     };
@@ -361,35 +372,139 @@ pub unsafe extern "C" fn spotify_connect(player: *mut SpotifyPlayer) -> std::os:
     if handle.connected.load(Ordering::SeqCst) {
         return SPOTIFY_OK;
     }
-    let credentials = match handle.cache.credentials() {
-        Some(c) => c,
-        // First login (GUI users): same PKCE browser flow as Web API
-        // search. The connected session persists reusable credentials to
-        // the cache, so later runs skip the browser.
-        None => match first_login_credentials(handle) {
-            Ok(c) => c,
-            Err(msg) => return fail(SPOTIFY_ERR_AUTH, msg),
-        },
-    };
-    match handle
-        .rt
-        .block_on(handle.session.connect(credentials, true))
-    {
-        Ok(()) => {
-            handle.connected.store(true, Ordering::SeqCst);
-            SPOTIFY_OK
-        }
-        Err(e) => {
-            // Login rejections vs transport failures get distinct codes;
-            // the full message is always in spotify_last_error().
-            let code = if e.error.downcast_ref::<AuthenticationError>().is_some() {
-                SPOTIFY_ERR_AUTH
-            } else {
-                SPOTIFY_ERR_INTERNAL
-            };
-            fail(code, format!("connect: {e}"))
+    fn login_failed(e: &librespot::core::Error) -> bool {
+        e.error.downcast_ref::<AuthenticationError>().is_some()
+    }
+    fn drop_cached_blob() {
+        let mut stale = cache_dir();
+        stale.push("credentials.json");
+        let _ = std::fs::remove_file(stale);
+    }
+    // Cached discovery blob first (usual path). OAuth-derived blobs
+    // (username None) can AP-connect but never satisfy login5-backed
+    // operations, so they are dropped in favor of real provisioning.
+    if let Some(cached) = handle.cache.credentials() {
+        if cached.username.is_some() {
+            match handle.rt.block_on(handle.session.connect(cached, true)) {
+                Ok(()) => {
+                    handle.connected.store(true, Ordering::SeqCst);
+                    return SPOTIFY_OK;
+                }
+                Err(e) if login_failed(&e) => drop_cached_blob(),
+                Err(e) => {
+                    let code = if login_failed(&e) {
+                        SPOTIFY_ERR_AUTH
+                    } else {
+                        SPOTIFY_ERR_INTERNAL
+                    };
+                    return fail(code, format!("connect: {e}"));
+                }
+            }
+        } else {
+            drop_cached_blob();
         }
     }
+    fail(
+        SPOTIFY_ERR_NO_CREDENTIALS,
+        "no Spotify credentials provisioned: open the app and select spotilite under 'Connect to a device'".to_owned(),
+    )
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_begin_provisioning(player: *mut SpotifyPlayer) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if let Ok(guard) = handle.prov.lock() {
+        if guard.is_some() {
+            return SPOTIFY_OK; // already advertising
+        }
+    } else {
+        return fail(SPOTIFY_ERR_INTERNAL, "provision lock poisoned".to_owned());
+    }
+    let dir = cache_dir();
+    let id = match device_id(&dir) {
+        Ok(id) => id,
+        Err(e) => return fail(SPOTIFY_ERR_INTERNAL, format!("device id: {e}")),
+    };
+    let client_id = SessionConfig::default().client_id;
+    let device_name = load_config().device_name;
+    let files_dir = dir.join("files");
+    let cache = match Cache::new(Some(&dir), Some(&dir), Some(&files_dir), None) {
+        Ok(c) => c,
+        Err(e) => return fail(SPOTIFY_ERR_INTERNAL, format!("cache: {e}")),
+    };
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let task = handle.rt.spawn(async move {
+        let mut discovery = match Discovery::builder(id, client_id)
+            .name(device_name)
+            .device_type(DeviceType::Computer)
+            .launch()
+        {
+            Ok(d) => d,
+            Err(_) => return,
+        };
+        use futures_util::StreamExt;
+        if let Some(credentials) = discovery.next().await {
+            cache.save_credentials(&credentials);
+        }
+        let _ = tx.send(());
+    });
+    match handle.prov.lock() {
+        Ok(mut guard) => {
+            *guard = Some(ProvState { done: rx, task });
+            SPOTIFY_OK
+        }
+        Err(_) => {
+            task.abort();
+            fail(SPOTIFY_ERR_INTERNAL, "provision lock poisoned".to_owned())
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_poll_provisioning(player: *mut SpotifyPlayer) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    let mut guard = match handle.prov.lock() {
+        Ok(g) => g,
+        Err(_) => return fail(SPOTIFY_ERR_INTERNAL, "provision lock poisoned".to_owned()),
+    };
+    let state = match guard.as_mut() {
+        Some(s) => s,
+        None => return 0,
+    };
+    match state.done.try_recv() {
+        Ok(()) => {
+            *guard = None;
+            1
+        }
+        Err(tokio::sync::oneshot::error::TryRecvError::Empty) => 0,
+        Err(tokio::sync::oneshot::error::TryRecvError::Closed) => {
+            *guard = None;
+            fail(
+                SPOTIFY_ERR_INTERNAL,
+                "provisioning ended without credentials".to_owned(),
+            )
+        }
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn spotify_cancel_provisioning(player: *mut SpotifyPlayer) -> std::os::raw::c_int {
+    let handle = match handle_ref(player) {
+        Ok(h) => h,
+        Err((code, msg)) => return fail(code, msg),
+    };
+    if let Ok(mut guard) = handle.prov.lock() {
+        if let Some(state) = guard.take() {
+            state.task.abort();
+        }
+    }
+    SPOTIFY_OK
 }
 
 #[no_mangle]
@@ -1137,34 +1252,8 @@ fn write_web_cache(client_id: &str, refresh_token: &str) {
     let _ = std::fs::write(web_cache_path(), text);
 }
 
-// First-login path for GUI users with no cached session: PKCE browser
-// login, then a session credential derived from the access token. Also
-// persists the web token so search/library work without a second login.
-fn first_login_credentials(handle: &SpotifyPlayer) -> Result<Credentials, String> {
-    let client_id = std::env::var("SPOTILITE_CLIENT_ID")
-        .ok()
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| read_web_cache().map(|(id, _)| id))
-        .or_else(|| {
-            let baked = DEFAULT_CLIENT_ID.trim();
-            if baked.is_empty() {
-                None
-            } else {
-                Some(baked.to_owned())
-            }
-        })
-        .ok_or_else(|| {
-            "Spotify login needed: set SPOTILITE_CLIENT_ID to your client id and retry (release builds may bake one in)".to_owned()
-        })?;
-    let token = browser_login(&client_id)?;
-    if !token.refresh_token.is_empty() {
-        write_web_cache(&client_id, &token.refresh_token);
-    }
-    if let Ok(mut guard) = handle.web_token.lock() {
-        *guard = Some(token.clone());
-    }
-    Ok(Credentials::with_access_token(token.access_token))
-}
+// (Retired: spotify_connect now goes straight through ensure_access_token,
+// which covers both the browser-first-login and silent-refresh cases.)
 
 fn browser_login(client_id: &str) -> Result<OAuthToken, String> {    OAuthClientBuilder::new(client_id, WEBAPI_REDIRECT, WEBAPI_SCOPES.to_vec())
         .open_in_browser()
